@@ -1,6 +1,6 @@
-import sys, ipaddress as ip
-from scapy.all import IP, TCP, sr1
+import sys, ipaddress as ip, socket
 import datetime
+import errno
 
 # argumento de linha de comando:
 #
@@ -14,7 +14,8 @@ import datetime
 error_codes = {
 	0: 'quantidade de argumentos inválida',
 	1: 'endereço de rede inválido',
-	2: 'rede não alcançável'
+	2: 'rede não alcançável',
+	3: 'ipv6 não suportado por enquanto'
 }
 
 def error_exit(error_code):
@@ -38,17 +39,34 @@ def create_ipnetwork(T_IP):
 	else:
 		return ip_net
 
-def host_scan(T_IP): # arrumar formatacao
+def host_scan(T_IP):
 	print(f'Target IP: {T_IP}\n')
-	p = sr1(IP(dst=str(T_IP))/TCP(dport=(22), flags="S"))
-	print(p)
-	
 
-def wide_scan(T_IP): # arrumar TUDO
+	if isinstance(T_IP, ip.IPv6Address):
+		error_exit(3)
+
+	print('PORT\tSTATE\n')
+	for port in [21, 22, 80, 443]:
+		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		code = sock.connect_ex((str(T_IP), port))
+		if code == 0:
+			print(f'{port}\tOPEN')
+		elif code == errno.ETIMEDOUT:
+			print(f'{port}\tTIMED OUT')
+		elif code == errno.ECONNREFUSED:
+			print(f'{port}\tCLOSED')
+		sock.close()
+	print('\n\n')
+	
+def wide_scan(T_IP):
 	print(f'Target IP: {T_IP}')
+
+	if isinstance(T_IP, ip.IPv6Address):
+		error_exit(3)
+
 	for host in T_IP.hosts():
 		host_scan(host)
-
+	
 def resolve_ip_string(ip_string):
 	conn_ip = None
 	if '/' in ip_string:
