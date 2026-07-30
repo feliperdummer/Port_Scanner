@@ -1,60 +1,54 @@
 import sys, ipaddress as ip, socket
 import datetime
 import errno
-
-# argumento de linha de comando:
-#
-# É uma lista chamada argv que pode ser acessada por meio de sys.argv. Por ser
-# uma lista, cada elemento pode ser acessado por meio de sys.argv[i];
-#
-# Como em C, o primeiro argumento (sys.argv[0]) é o nome do scritp sendo rodado
-# no momento. A partir de sys.argv[1], são parâmetros passados para execução do
-# programa; 
+import json
 
 error_codes = {
 	0: 'quantidade de argumentos inválida',
 	1: 'endereço de rede inválido',
 	2: 'rede não alcançável',
-	3: 'ipv6 não suportado por enquanto'
+	3: 'ipv6 não suportado por enquanto',
+	4: 'número de porta fora limite (1-65535)',
+	5: 'formato de porta inválido. Tente "[p1,p2,...,pn]" ou '
+		'"[porta]" para uma porta específica'
 }
 
 def error_exit(error_code):
 	print(f'erro: {error_codes.get(error_code)}')
-	print('uso: python port_scan.py [ip_address]')
+	print('uso: python port_scan.py [ip_address] "[porta]"')
 	sys.exit()
 
 def create_ipaddress(T_IP):
 	try:
 		conn_ip = ip.ip_address(T_IP)
 	except ValueError:
-		return None
-	else:
-		return conn_ip
+		conn_ip = None
+	return conn_ip
 
 def create_ipnetwork(T_IP):
 	try:
 		ip_net = ip.ip_network(T_IP)
 	except ValueError:
-		return None
-	else:
-		return ip_net
+		conn_ip = None
+	return ip_net
 
-def host_scan(T_IP):
+def host_scan(T_IP, port_list):
 	print(f'Target IP: {T_IP}\n')
 
 	if isinstance(T_IP, ip.IPv6Address):
 		error_exit(3)
 
-	print('PORT\tSTATE\n')
-	for port in [21, 22, 80, 443]:
+	print('PORTA\tESTADO\n')
+	for port in port_list:
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		sock.settimeout(2) # duracao da tentativa de conexao
 		code = sock.connect_ex((str(T_IP), port))
 		if code == 0:
-			print(f'{port}\tOPEN')
-		elif code == errno.ETIMEDOUT:
-			print(f'{port}\tTIMED OUT')
+			print(f'{port}\tABERTA')
+		elif code == errno.EWOULDBLOCK or code == errno.ETIMEDOUT:
+			print(f'{port}\tSEM RESPOSTA/LIMITE DE TEMPO')
 		elif code == errno.ECONNREFUSED:
-			print(f'{port}\tCLOSED')
+			print(f'{port}\tFECHADA')
 		sock.close()
 	print('\n\n')
 	
@@ -77,21 +71,25 @@ def resolve_ip_string(ip_string):
 
 def main():
 	arg_len = len(sys.argv)
-	if arg_len == 1:
-		ip_string = '127.0.0.1'
-	elif arg_len == 2:
-		ip_string = sys.argv[1]
-	else :
+	if arg_len != 3:
 		error_exit(0)
+
+	ip_string = sys.argv[1]
+	port_list_string = sys.argv[2]
 
 	conn_ip = resolve_ip_string(ip_string)
 	if conn_ip == None:
 		error_exit(1)
 
+	try:
+		port_list = json.loads(port_list_string)
+	except json.decoder.JSONDecodeError:
+		error_exit(5)
+
 	if isinstance(conn_ip, (ip.IPv4Address, ip.IPv6Address)):
-		status_code = host_scan(conn_ip) # faz um scan de apenas um host
+		status_code = host_scan(conn_ip, port_list)
 	else:
-		status_code = wide_scan(conn_ip) # faz um scan de rede
+		status_code = wide_scan(conn_ip, port_list)
 
 	if status_code == 2:
 		error_exit(2)
