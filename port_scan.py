@@ -2,8 +2,7 @@ import sys, ipaddress as ip, socket
 import datetime as dt
 import errno
 import json
-
-# implementacao de descoberta de host interno por ARP
+from scapy.all import ARP, Ether, srp1, sr1, IP, ICMP
 
 error_codes = {
 	0: 'quantidade de argumentos inválida',
@@ -47,25 +46,50 @@ def check_port_range(port_list):
 		if port < 1 or port > 65535:
 			error_exit(4)
 
-def wide_scan(T_IP):
-	print(f'Target Network: {T_IP}')
+def get_machine_ip():
+	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+	s.connect_ex(("8.8.8.8", 80))
+	ip = s.getsockname()[0]
+	sock.close()
+	return ip
 
-	if isinstance(T_IP, ip.IPv6Address):
-		error_exit(3)
+def exec_arp_ping(T_IP):
+	return srp1(Ether(dst="ff:ff:ff:ff:ff:ff")/
+				ARP(pdst=str(T_IP)),
+					timeout=1, verbose=False)
+
+def exec_icmp_ping(T_IP):
+	return sr1(IP(dst=str(T_IP))/
+				ICMP(),
+					timeout=2, verbose=False)
+
+def wide_scan(T_IP, port_list):
+	print(f'Target Network: {T_IP}\n')
 
 	for host in T_IP.hosts():
-		host_scan(host)
+		host_scan(host, port_list)
 
 def host_scan(T_IP, port_list):
+	print('===============================')
 	print(f'Target IP: {T_IP}\n')
 
-	if isinstance(T_IP, ip.IPv6Address):
+	if T_IP.version == 6:
 		error_exit(3)
+
+	if T_IP.is_private:
+		response = exec_arp_ping(T_IP)
+	else:
+		response = exec_icmp_ping(T_IP)
+
+	if response == None:
+		print(f'{T_IP} HOST INALCANÇÁVEL')
+		print('===============================\n')
+		return
 
 	print('PORTA\tESTADO\n')
 	for port in port_list:
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		sock.settimeout(3) # duracao da tentativa de conexao
+		sock.settimeout(3)
 		code = sock.connect_ex((str(T_IP), port))
 		if code == 0:
 			print(f'{port}\tABERTA')
@@ -74,7 +98,7 @@ def host_scan(T_IP, port_list):
 		elif code == errno.ECONNREFUSED:
 			print(f'{port}\tFECHADA')
 		sock.close()
-	print('\n\n')
+	print('===============================\n')
 
 def main():
 	arg_len = len(sys.argv)
@@ -99,9 +123,6 @@ def main():
 		status_code = host_scan(conn_ip, port_list)
 	else:
 		status_code = wide_scan(conn_ip, port_list)
-
-	if status_code == 2:
-		error_exit(2)
 
 	print(f'Scan finalizado em [{dt.datetime.now().strftime("%X %x")}]')
 
