@@ -1,9 +1,9 @@
 import sys, ipaddress as ip, socket
-import datetime
+import datetime as dt
 import errno
 import json
 
-
+# implementacao de descoberta de host interno por ARP
 
 error_codes = {
 	0: 'quantidade de argumentos inválida',
@@ -34,6 +34,28 @@ def create_ipnetwork(T_IP):
 		conn_ip = None
 	return ip_net
 
+def resolve_ip_string(ip_string):
+	conn_ip = None
+	if '/' in ip_string:
+		conn_ip = create_ipnetwork(ip_string)
+	if conn_ip == None:
+		conn_ip = create_ipaddress(ip_string)
+	return conn_ip
+
+def check_port_range(port_list):
+	for port in port_list:
+		if port < 1 or port > 65535:
+			error_exit(4)
+
+def wide_scan(T_IP):
+	print(f'Target Network: {T_IP}')
+
+	if isinstance(T_IP, ip.IPv6Address):
+		error_exit(3)
+
+	for host in T_IP.hosts():
+		host_scan(host)
+
 def host_scan(T_IP, port_list):
 	print(f'Target IP: {T_IP}\n')
 
@@ -42,8 +64,6 @@ def host_scan(T_IP, port_list):
 
 	print('PORTA\tESTADO\n')
 	for port in port_list:
-		if port < 1 or port > 65535:
-			error_exit(4)
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		sock.settimeout(3) # duracao da tentativa de conexao
 		code = sock.connect_ex((str(T_IP), port))
@@ -56,23 +76,6 @@ def host_scan(T_IP, port_list):
 		sock.close()
 	print('\n\n')
 	
-def wide_scan(T_IP):
-	print(f'Target IP: {T_IP}')
-
-	if isinstance(T_IP, ip.IPv6Address):
-		error_exit(3)
-
-	for host in T_IP.hosts():
-		host_scan(host)
-	
-def resolve_ip_string(ip_string):
-	conn_ip = None
-	if '/' in ip_string:
-		conn_ip = create_ipnetwork(ip_string)
-	if conn_ip == None:
-		conn_ip = create_ipaddress(ip_string)
-	return conn_ip
-
 def main():
 	arg_len = len(sys.argv)
 	if arg_len != 3:
@@ -90,6 +93,8 @@ def main():
 	except json.decoder.JSONDecodeError:
 		error_exit(5)
 
+	check_port_range(port_list)
+
 	if isinstance(conn_ip, (ip.IPv4Address, ip.IPv6Address)):
 		status_code = host_scan(conn_ip, port_list)
 	else:
@@ -98,7 +103,7 @@ def main():
 	if status_code == 2:
 		error_exit(2)
 
-	print(f'Scan finalizado em [{datetime.datetime.now().strftime("%X %x")}]')
+	print(f'Scan finalizado em [{dt.datetime.now().strftime("%X %x")}]')
 
 if __name__ == "__main__":
 	main()
