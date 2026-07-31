@@ -3,6 +3,8 @@ import datetime
 import errno
 import json
 
+
+
 error_codes = {
 	0: 'quantidade de argumentos inválida',
 	1: 'endereço de rede inválido',
@@ -40,8 +42,10 @@ def host_scan(T_IP, port_list):
 
 	print('PORTA\tESTADO\n')
 	for port in port_list:
+		if port < 1 or port > 65535:
+			error_exit(4)
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		sock.settimeout(2) # duracao da tentativa de conexao
+		sock.settimeout(3) # duracao da tentativa de conexao
 		code = sock.connect_ex((str(T_IP), port))
 		if code == 0:
 			print(f'{port}\tABERTA')
