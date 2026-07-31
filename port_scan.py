@@ -75,9 +75,7 @@ def host_scan(T_IP, port_list):
 			print(f'{port}\tFECHADA')
 		sock.close()
 	print('\n\n')
-	
-<<<<<<< HEAD
-=======
+
 def wide_scan(T_IP):
 	print(f'Target IP: {T_IP}')
 
@@ -100,7 +98,6 @@ def check_port_range(port_list):
 		if port < 1 or port > 65535:
 			error_exit(4)
 
->>>>>>> 8fbb7e9d45abd7d1fb9daf1507d6db8f9ab97ad8
 def main():
 	arg_len = len(sys.argv)
 	if arg_len != 3:
