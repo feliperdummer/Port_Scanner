@@ -76,28 +76,6 @@ def host_scan(T_IP, port_list):
 		sock.close()
 	print('\n\n')
 
-def wide_scan(T_IP):
-	print(f'Target IP: {T_IP}')
-
-	if isinstance(T_IP, ip.IPv6Address):
-		error_exit(3)
-
-	for host in T_IP.hosts():
-		host_scan(host)
-	
-def resolve_ip_string(ip_string):
-	conn_ip = None
-	if '/' in ip_string:
-		conn_ip = create_ipnetwork(ip_string)
-	if conn_ip == None:
-		conn_ip = create_ipaddress(ip_string)
-	return conn_ip
-
-def check_port_range(port_list):
-	for port in port_list:
-		if port < 1 or port > 65535:
-			error_exit(4)
-
 def main():
 	arg_len = len(sys.argv)
 	if arg_len != 3:
