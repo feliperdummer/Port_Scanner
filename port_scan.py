@@ -3,7 +3,7 @@ import datetime
 import errno
 import json
 
-
+# implementacao de descoberta de host interno por ARP
 
 error_codes = {
 	0: 'quantidade de argumentos inválida',
@@ -42,8 +42,6 @@ def host_scan(T_IP, port_list):
 
 	print('PORTA\tESTADO\n')
 	for port in port_list:
-		if port < 1 or port > 65535:
-			error_exit(4)
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		sock.settimeout(3) # duracao da tentativa de conexao
 		code = sock.connect_ex((str(T_IP), port))
@@ -73,6 +71,11 @@ def resolve_ip_string(ip_string):
 		conn_ip = create_ipaddress(ip_string)
 	return conn_ip
 
+def check_port_range(port_list):
+	for port in port_list:
+		if port < 1 or port > 65535:
+			error_exit(4)
+
 def main():
 	arg_len = len(sys.argv)
 	if arg_len != 3:
@@ -89,6 +92,8 @@ def main():
 		port_list = json.loads(port_list_string)
 	except json.decoder.JSONDecodeError:
 		error_exit(5)
+
+	check_port_range(port_list)
 
 	if isinstance(conn_ip, (ip.IPv4Address, ip.IPv6Address)):
 		status_code = host_scan(conn_ip, port_list)
