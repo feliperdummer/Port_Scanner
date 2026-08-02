@@ -2,7 +2,10 @@ import sys, ipaddress as ip, socket
 import datetime as dt
 import errno
 import json
-from scapy.all import ARP, Ether, srp1, sr1, IP, ICMP
+from scapy.all import srp1, sr1, Ether, ARP, IP, ICMP, TCP, UDP
+
+# implementacao mais concreta de host discovery com TCP ping e 
+# UDP ping
 
 error_codes = {
 	0: 'quantidade de argumentos inválida',
@@ -63,6 +66,23 @@ def exec_icmp_ping(T_IP):
 				ICMP(),
 					timeout=2, verbose=False)
 
+def exec_tcp_ping(T_IP):
+	return sr1(IP(dst=str(T_IP))/
+				TCP(dport=80, flags='S'),
+					timeout=2, verbose=False)
+
+def exec_udp_ping(T_IP):
+	return sr1(IP(dst=str(T_IP))/
+				UDP(dport=0),
+					timeout=2, verbose=False)
+
+def host_discovery(T_IP, private):
+	if private:
+		return exec_arp_ping(T_IP)
+	return (exec_icmp_ping(T_IP) != None or
+		   exec_tcp_ping (T_IP) != None or
+		   exec_udp_ping (T_IP) != None) 
+
 def wide_scan(T_IP, port_list):
 	print(f'Target Network: {T_IP}\n')
 
@@ -76,12 +96,7 @@ def host_scan(T_IP, port_list):
 	if T_IP.version == 6:
 		error_exit(3)
 
-	if T_IP.is_private:
-		response = exec_arp_ping(T_IP)
-	else:
-		response = exec_icmp_ping(T_IP)
-
-	if response == None:
+	if host_discovery(T_IP, T_IP.is_private) == None:
 		print(f'{T_IP} HOST INALCANÇÁVEL')
 		print('===============================\n')
 		return
