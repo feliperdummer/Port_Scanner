@@ -1,11 +1,10 @@
-import sys, ipaddress as ip, socket
-import datetime as dt
-import errno
-import json
-from scapy.all import srp1, sr1, Ether, ARP, IP, ICMP, TCP, UDP
+import sys, ipaddress as ip, socket, errno, struct
+import datetime as dt, json
 
-# implementacao mais concreta de host discovery com TCP ping e 
-# UDP ping
+from scapy.all import srp1, sr1, Ether, ARP, IP, ICMP, TCP, UDP
+from getmac import get_mac_address as getmac
+
+import arp, ether
 
 error_codes = {
 	0: 'quantidade de argumentos inválida',
@@ -53,13 +52,63 @@ def get_machine_ip():
 	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	s.connect_ex(("8.8.8.8", 80))
 	ip = s.getsockname()[0]
-	sock.close()
+	s.close()
 	return ip
 
 def exec_arp_ping(T_IP):
-	return srp1(Ether(dst="ff:ff:ff:ff:ff:ff")/
-				ARP(pdst=str(T_IP)),
-					timeout=1, verbose=False)
+	arp_header = arp.Arp(
+		1, 
+		0x800,
+		6,
+		4,
+		1,
+		getmac(),
+		get_machine_ip(),
+		b'\x00' * 6,
+		str(T_IP)).build()
+
+	ether_header = ether.Ether(
+		b'\xff' * 6,
+		getmac(),
+		0x806,
+		arp_header,
+		28).build()
+
+	sock = socket.socket(socket.AF_PACKET, 
+		socket.SOCK_RAW, 
+			socket.htons(0x806))
+	sock.settimeout(1)
+	sock.bind(("eth0", 0))
+	sock.send(ether_header)
+
+	try:
+		response = sock.recv(65535)
+	except TimeoutError:
+		response = None
+	finally:
+		sock.close()
+
+	if response:
+		# extrai o header ethernet, equivalente a 14 bytes
+		ether_header = struct.unpack("!6s6sH", response[:14])
+
+		# caso o pacote payload do ethernet seja do tipo ARP, extrai
+		# o header arp do pacote recebido. Equivale a 28 bytes
+		if ether_header[2] == 0x0806:
+			arp_header = struct.unpack("!HHBBH6s4s6s4s", response[14:42])
+		else:
+			return None
+
+		# arp_header[7] e o mac da maquina que espera o arp response, 
+		# ou seja, minha maquina
+		if bytes.fromhex(getmac().replace(':', '')) != arp_header[7]:
+			return None
+		
+		return True
+
+	return response;
+
+
 
 def exec_icmp_ping(T_IP):
 	return sr1(IP(dst=str(T_IP))/
@@ -76,8 +125,8 @@ def exec_udp_ping(T_IP):
 				UDP(dport=0),
 					timeout=2, verbose=False)
 
-def host_discovery(T_IP, private):
-	if private:
+def host_discovery(T_IP):
+	if T_IP.is_private:
 		return exec_arp_ping(T_IP)
 	return (exec_icmp_ping(T_IP) != None or
 		   exec_tcp_ping (T_IP) != None or
@@ -96,7 +145,7 @@ def host_scan(T_IP, port_list):
 	if T_IP.version == 6:
 		error_exit(3)
 
-	if host_discovery(T_IP, T_IP.is_private) == None:
+	if host_discovery(T_IP) == None:
 		print(f'{T_IP} HOST INALCANÇÁVEL')
 		print('===============================\n')
 		return
