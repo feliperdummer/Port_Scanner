@@ -6,6 +6,11 @@ from getmac import get_mac_address as getmac
 
 import arp, ether
 
+machine_ip_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+machine_ip_socket.connect_ex(("8.8.8.8", 80))
+machine_ip = machine_ip_socket.getsockname()[0]
+machine_ip_socket.close()
+
 error_codes = {
 	0: 'quantidade de argumentos inválida',
 	1: 'endereço de rede inválido',
@@ -48,14 +53,8 @@ def check_port_range(port_list):
 		if port < 1 or port > 65535:
 			error_exit(4)
 
-def get_machine_ip():
-	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	s.connect_ex(("8.8.8.8", 80))
-	ip = s.getsockname()[0]
-	s.close()
-	return ip
-
 def exec_arp_ping(T_IP):
+	global machine_ip
 	arp_header = arp.Arp(
 		1, 
 		0x800,
@@ -63,7 +62,7 @@ def exec_arp_ping(T_IP):
 		4,
 		1,
 		getmac(),
-		get_machine_ip(),
+		machine_ip,
 		b'\x00' * 6,
 		str(T_IP)).build()
 
@@ -74,8 +73,8 @@ def exec_arp_ping(T_IP):
 		arp_header,
 		28).build()
 
-	sock = socket.socket(socket.AF_PACKET, 
-		socket.SOCK_RAW, 
+	sock = 	socket.socket(socket.AF_PACKET, 
+			socket.SOCK_RAW, 
 			socket.htons(0x806))
 	sock.settimeout(1)
 	sock.bind(("eth0", 0))
@@ -108,8 +107,6 @@ def exec_arp_ping(T_IP):
 
 	return response;
 
-
-
 def exec_icmp_ping(T_IP):
 	return sr1(IP(dst=str(T_IP))/
 				ICMP(),
@@ -126,11 +123,15 @@ def exec_udp_ping(T_IP):
 					timeout=2, verbose=False)
 
 def host_discovery(T_IP):
+	global machine_ip
+	# self-scan
+	if str(T_IP) == machine_ip:
+		return True
 	if T_IP.is_private:
 		return exec_arp_ping(T_IP)
 	return (exec_icmp_ping(T_IP) != None or
-		   exec_tcp_ping (T_IP) != None or
-		   exec_udp_ping (T_IP) != None) 
+		    exec_tcp_ping (T_IP) != None or
+		    exec_udp_ping (T_IP) != None) 
 
 def wide_scan(T_IP, port_list):
 	print(f'Target Network: {T_IP}\n')
@@ -153,15 +154,15 @@ def host_scan(T_IP, port_list):
 	print('PORTA\tESTADO\n')
 	for port in port_list:
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		sock.settimeout(3)
+		sock.settimeout(2.5)
 		code = sock.connect_ex((str(T_IP), port))
+		sock.close()
 		if code == 0:
 			print(f'{port}\tABERTA')
 		elif code == errno.EWOULDBLOCK or code == errno.ETIMEDOUT:
 			print(f'{port}\tSEM RESPOSTA/LIMITE DE TEMPO')
 		elif code == errno.ECONNREFUSED:
 			print(f'{port}\tFECHADA')
-		sock.close()
 	print('===============================\n')
 
 def main():
