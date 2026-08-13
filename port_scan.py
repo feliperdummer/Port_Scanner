@@ -4,7 +4,7 @@ import datetime as dt, json
 from scapy.all import srp1, sr1, Ether, ARP, IP, ICMP, TCP, UDP
 from getmac import get_mac_address as getmac
 
-import arp, ether
+import arp, ether, flag_parser
 
 machine_ip_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 machine_ip_socket.connect_ex(("8.8.8.8", 80))
@@ -177,10 +177,17 @@ def main():
 	if conn_ip == None:
 		error_exit(1)
 
+	#try:
+	#	port_list = json.loads(port_list_string)
+	#except json.decoder.JSONDecodeError:
+	#	error_exit(5)
+
 	try:
-		port_list = json.loads(port_list_string)
-	except json.decoder.JSONDecodeError:
+		port_list = flag_parser.parse_portas(port_list_string)
+	except flag_parser.FlagParsingException:
 		error_exit(5)
+
+	print(port_list)
 
 	check_port_range(port_list)
 
