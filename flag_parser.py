@@ -2,70 +2,67 @@ class FlagParsingException(Exception):
 	pass
 
 def parse_portas(port_list: str) -> list[int]:
+	if len(port_list) < 2:
+		raise FlagParsingException('sintaxe de flags incorreta')
+	if port_list[0] != '[' or port_list[-1] != ']':
+		raise FlagParsingException('sintaxe de flags incorreta')
+	if len(port_list) == 2 or len(port_list) == 3:
+		if port_list == '[]' or port_list == '[-]':
+			return range(1, 65536)
+		raise FlagParsingException('sintaxe de flags incorreta')
 	port_list = port_list.replace('[', '')
-	
-	ans = []
-	
+
+	l = []
 	curr_num = 0
-	in_interval_init = False # intervalo iniciado com numero
+	in_interval_init = False # intervalo iniciado
 	init_number = 0
-	in_interval_not_init = False # intervalo comecando em 1
 	prev_c = None
 	for c in port_list:
 		if digit(c):
 			curr_num = curr_num * 10 + (ord(c) - 48)
 		elif c == '-':
-			if prev_c != None and digit(prev_c):
+			if digit(prev_c):
 				init_number = curr_num
 				in_interval_init = True
-			elif prev_c == None or prev_c == ',':
-				in_interval_not_init = True
 			else:
-				raise FlagParsingException('sintaxe de flags incorreta')
+				raise FlagParsingException('intervalo nao iniciado')
 			curr_num = 0
 		elif c == ',':
 			if digit(prev_c) and in_interval_init:
-				ans += range(init_number, curr_num+1)
+				if init_number < curr_num:
+					step = 1
+				else:
+					step = -1
+				l += range(init_number, curr_num+step, step)
 				init_number = 0
 				in_interval_init = False
-			elif in_interval_init:
-				ans += range(init_number, 65536)
-				return ans
-			elif digit(prev_c) and in_interval_not_init:
-				ans += range(1, curr_num+1)
-				in_interval_not_init = False
-			elif in_interval_not_init:
-				ans += range(1, 65536)
-				return ans
 			elif digit(prev_c):
-				ans.append(curr_num)
+				l.append(curr_num)
+			else:
+				raise FlagParsingException('sintaxe de flags invalida')
 			curr_num = 0
 		elif c == ']':
-			if in_interval_init and digit(prev_c):
-				ans += range(init_number, curr_num+1)
-			elif in_interval_init:
-				ans += range(init_number, 65536)
-			elif in_interval_not_init and digit(prev_c):
-				ans += range(1, curr_num+1)
-			elif in_interval_not_init:
-				ans += range(1, 65536)
+			if digit(prev_c) and in_interval_init:
+				if init_number < curr_num:
+					step = 1
+				else:
+					step = -1
+				l += range(init_number, curr_num+step, step)
 			elif digit(prev_c):
-				ans.append(curr_num)
-			elif prev_c == ',':
+				l.append(curr_num)
+			else:
 				raise FlagParsingException('sintaxe de flags incorreta')
-			break
 		prev_c = c
-	return ans
+	return sorted(l)
 
 def digit(c):
-	result = False
-	try:
-		result = ord(c) >= 48 and ord(c) <= 57
-	except TypeError:
-		result = False
-	return result
+	return c != None and ord(c) >= 48 and ord(c) <= 57
 
 
-# [15-]
-# [-]
-# [,-]
+# formatos validos:
+#
+#	[x, x1, x2, ..., xn]
+#	[x-xn, xn+1, xn+2, ..., xn+m]
+# 	[x-xn, xn+1-xn+m, y, y1, ..., yn]
+# 	[] ou [-] todas as portas
+# 	

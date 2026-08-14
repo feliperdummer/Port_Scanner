@@ -1,30 +1,15 @@
 import sys, ipaddress as ip, socket, errno, struct
-import datetime as dt, json
+import datetime as dt
 
 from scapy.all import srp1, sr1, Ether, ARP, IP, ICMP, TCP, UDP
 from getmac import get_mac_address as getmac
 
-import arp, ether, flag_parser
+import arp, ether, flag_parser, errors
 
 machine_ip_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 machine_ip_socket.connect_ex(("8.8.8.8", 80))
 machine_ip = machine_ip_socket.getsockname()[0]
 machine_ip_socket.close()
-
-error_codes = {
-	0: 'quantidade de argumentos inválida',
-	1: 'endereço de rede inválido',
-	2: 'rede não alcançável',
-	3: 'ipv6 não suportado por enquanto',
-	4: 'número de porta fora limite (1-65535)',
-	5: 'formato de porta inválido. Tente "[p1,p2,...,pn]" ou '
-		'"[porta]" para uma porta específica'
-}
-
-def error_exit(error_code):
-	print(f'erro: {error_codes.get(error_code)}')
-	print('uso: python port_scan.py [ip_address] "[porta]"')
-	sys.exit()
 
 def create_ipaddress(T_IP):
 	try:
@@ -44,14 +29,14 @@ def resolve_ip_string(ip_string):
 	conn_ip = None
 	if '/' in ip_string:
 		conn_ip = create_ipnetwork(ip_string)
-	if conn_ip == None:
+	if not conn_ip:
 		conn_ip = create_ipaddress(ip_string)
 	return conn_ip
 
 def check_port_range(port_list):
-	for port in port_list:
-		if port < 1 or port > 65535:
-			error_exit(4)
+	return (port_list != None
+			and min(port_list) >= 0
+			and max(port_list) <= 65535)
 
 def exec_arp_ping(T_IP):
 	global machine_ip
@@ -76,7 +61,7 @@ def exec_arp_ping(T_IP):
 	sock = 	socket.socket(socket.AF_PACKET, 
 			socket.SOCK_RAW, 
 			socket.htons(0x806))
-	sock.settimeout(1)
+	sock.settimeout(0.7)
 	sock.bind(("eth0", 0))
 	sock.send(ether_header)
 
@@ -129,9 +114,9 @@ def host_discovery(T_IP):
 		return True
 	if T_IP.is_private:
 		return exec_arp_ping(T_IP)
-	return (exec_icmp_ping(T_IP) != None or
-		    exec_tcp_ping (T_IP) != None or
-		    exec_udp_ping (T_IP) != None) 
+	return (exec_icmp_ping(T_IP) or
+		    exec_tcp_ping (T_IP) or
+		    exec_udp_ping (T_IP)) 
 
 def wide_scan(T_IP, port_list):
 	print(f'Target Network: {T_IP}\n')
@@ -144,9 +129,9 @@ def host_scan(T_IP, port_list):
 	print(f'Target IP: {T_IP}\n')
 
 	if T_IP.version == 6:
-		error_exit(3)
+		errors.error_exit(2)
 
-	if host_discovery(T_IP) == None:
+	if not host_discovery(T_IP):
 		print(f'{T_IP} HOST INALCANÇÁVEL')
 		print('===============================\n')
 		return
@@ -154,7 +139,7 @@ def host_scan(T_IP, port_list):
 	print('PORTA\tESTADO\n')
 	for port in port_list:
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		sock.settimeout(2.5)
+		sock.settimeout(1.5)
 		code = sock.connect_ex((str(T_IP), port))
 		sock.close()
 		if code == 0:
@@ -168,28 +153,22 @@ def host_scan(T_IP, port_list):
 def main():
 	arg_len = len(sys.argv)
 	if arg_len != 3:
-		error_exit(0)
+		errors.error_exit(0)
 
 	ip_string = sys.argv[1]
 	port_list_string = sys.argv[2]
 
 	conn_ip = resolve_ip_string(ip_string)
-	if conn_ip == None:
-		error_exit(1)
-
-	#try:
-	#	port_list = json.loads(port_list_string)
-	#except json.decoder.JSONDecodeError:
-	#	error_exit(5)
+	if not conn_ip:
+		errors.error_exit(1)
 
 	try:
 		port_list = flag_parser.parse_portas(port_list_string)
 	except flag_parser.FlagParsingException:
-		error_exit(5)
+		errors.error_exit(4)
 
-	print(port_list)
-
-	check_port_range(port_list)
+	if not check_port_range(port_list):
+		errors.error_exit(3)
 
 	if isinstance(conn_ip, (ip.IPv4Address, ip.IPv6Address)):
 		status_code = host_scan(conn_ip, port_list)
