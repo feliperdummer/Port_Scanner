@@ -4,7 +4,7 @@ import datetime as dt
 from scapy.all import srp1, sr1, Ether, ARP, IP, ICMP, TCP, UDP
 from getmac import get_mac_address as getmac
 
-import arp, ether, flag_parser, errors
+import arp, ether, tcp, flag_parser, errors
 
 machine_ip_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 machine_ip_socket.connect_ex(("8.8.8.8", 80))
@@ -138,10 +138,12 @@ def host_scan(T_IP, port_list):
 
 	print('PORTA\tESTADO\n')
 	for port in port_list:
-		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		sock.settimeout(1.5)
-		code = sock.connect_ex((str(T_IP), port))
-		sock.close()
+		#sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		#sock.settimeout(1.5)
+		#code = sock.connect_ex((str(T_IP), port))
+		#sock.close()
+		try_syn_scan(T_IP, port)
+		sys.exit()
 		if code == 0:
 			print(f'{port}\tABERTA')
 		elif code == errno.EWOULDBLOCK or code == errno.ETIMEDOUT:
@@ -149,6 +151,22 @@ def host_scan(T_IP, port_list):
 		elif code == errno.ECONNREFUSED:
 			print(f'{port}\tFECHADA')
 	print('===============================\n')
+
+def try_syn_scan(T_IP, T_PORT):
+	global machine_ip
+	packet = tcp.TCPPacket(
+		machine_ip,
+		1025,
+		str(T_IP),
+		T_PORT,
+		0b000000010).build()
+	sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
+	sock.settimeout(2)
+	sock.sendto(packet, (str(T_IP), T_PORT))
+	# basicamente tudo daqui pra frente tem que ser refeito porque 
+	# eu nao tava ligado que tinha que tratar o header IP tambem,
+	# junto com o header TCP.  
+
 
 def main():
 	arg_len = len(sys.argv)

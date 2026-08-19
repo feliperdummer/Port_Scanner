@@ -20,12 +20,11 @@ class Ether:
 
 		# minimum payload size is 46
 		if self.payload_size < 46:
-			self.payload = self.payload + (b"\x00" * (46 - self.payload_size))
+			self.payload += (b"\x00" * (46 - self.payload_size))
 		elif payload > 1500:
 			print('ether.py: payload too big (>1500 bytes)')
 			return
 
-		packet = packet + self.payload
+		packet += self.payload
 
 		return packet
-
