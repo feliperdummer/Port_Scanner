@@ -83,18 +83,21 @@ class TCPPacket:
 
         return packet
 
+    def extract(packet: bytes):
+        data_offset = (packet[12] >> 4) * 4
+        tcp_header = struct.unpack('!HHIIBBHHH', packet[:data_offset])
 
-#if __name__ == '__main__':
-#    dst = '192.168.1.1'
-#
-#    pak = TCPPacket(
-#        '192.168.1.42',
-#        20,
-#       dst,
-#        666,
-#        0b000101001  # Merry Christmas!
-#    )
-#
-#    s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
-#
-#    s.sendto(pak.build(), (dst, 0))
+        tcp_header_good = (
+            tcp_header[0],            # Porta fonte
+            tcp_header[1],            # Porta destino
+            tcp_header[2],            # Sequence Number
+            tcp_header[3],            # ACK Number
+            (tcp_header[4] >> 4) * 4, # Data Offset
+            0,                        # Reserved
+            tcp_header[5],            # Flags 
+            tcp_header[6],            # Janela
+            tcp_header[7],            # Checksum do pacote
+            tcp_header[8]             # Ponteiro urgente
+        )
+
+        return (tcp_header_good, packet[:data_offset])

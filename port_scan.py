@@ -1,10 +1,10 @@
-import sys, ipaddress as ip, socket, errno, struct
+import sys, ipaddress, socket, errno, struct
 import datetime as dt
 
 from scapy.all import srp1, sr1, Ether, ARP, IP, ICMP, TCP, UDP
 from getmac import get_mac_address as getmac
 
-import arp, ether, tcp, flag_parser, errors
+import arp, ether, tcp, ip, flag_parser, errors
 
 machine_ip_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 machine_ip_socket.connect_ex(("8.8.8.8", 80))
@@ -13,14 +13,14 @@ machine_ip_socket.close()
 
 def create_ipaddress(T_IP):
 	try:
-		conn_ip = ip.ip_address(T_IP)
+		conn_ip = ipaddress.ip_address(T_IP)
 	except ValueError:
 		conn_ip = None
 	return conn_ip
 
 def create_ipnetwork(T_IP):
 	try:
-		ip_net = ip.ip_network(T_IP)
+		ip_net = ipaddress.ip_network(T_IP)
 	except ValueError:
 		conn_ip = None
 	return ip_net
@@ -34,9 +34,8 @@ def resolve_ip_string(ip_string):
 	return conn_ip
 
 def check_port_range(port_list):
-	return (port_list != None
-			and min(port_list) >= 0
-			and max(port_list) <= 65535)
+	return (port_list and min(port_list) >= 1
+					  and max(port_list) <= 65535)
 
 def exec_arp_ping(T_IP):
 	global machine_ip
@@ -61,12 +60,12 @@ def exec_arp_ping(T_IP):
 	sock = 	socket.socket(socket.AF_PACKET, 
 			socket.SOCK_RAW, 
 			socket.htons(0x806))
-	sock.settimeout(0.7)
+	sock.settimeout(0.5)
 	sock.bind(("eth0", 0))
 	sock.send(ether_header)
 
 	try:
-		response = sock.recv(65535)
+		response = sock.recv(1024)
 	except TimeoutError:
 		response = None
 	finally:
@@ -138,35 +137,64 @@ def host_scan(T_IP, port_list):
 
 	print('PORTA\tESTADO\n')
 	for port in port_list:
-		#sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		#sock.settimeout(1.5)
-		#code = sock.connect_ex((str(T_IP), port))
-		#sock.close()
-		try_syn_scan(T_IP, port)
-		sys.exit()
+		code = try_syn_scan(T_IP, port)
 		if code == 0:
 			print(f'{port}\tABERTA')
-		elif code == errno.EWOULDBLOCK or code == errno.ETIMEDOUT:
-			print(f'{port}\tSEM RESPOSTA/LIMITE DE TEMPO')
-		elif code == errno.ECONNREFUSED:
+		elif code == 1:
 			print(f'{port}\tFECHADA')
+		elif code == 2:
+			print(f'{port}\tSEM RESPOSTA/LIMITE DE TEMPO')
 	print('===============================\n')
 
 def try_syn_scan(T_IP, T_PORT):
 	global machine_ip
-	packet = tcp.TCPPacket(
-		machine_ip,
-		1025,
-		str(T_IP),
-		T_PORT,
-		0b000000010).build()
-	sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
-	sock.settimeout(2)
-	sock.sendto(packet, (str(T_IP), T_PORT))
-	# basicamente tudo daqui pra frente tem que ser refeito porque 
-	# eu nao tava ligado que tinha que tratar o header IP tambem,
-	# junto com o header TCP.  
+	tcp_packet = tcp.TCPPacket(machine_ip, 8787,
+							   str(T_IP), T_PORT,
+							   0b00000010).build()
+	ip_packet = ip.IP(6, len(tcp_packet), 
+					  machine_ip, str(T_IP)).build()
+	full_pack = ip_packet + tcp_packet
 
+	sender = socket.socket(socket.AF_INET, 
+						   socket.SOCK_RAW, 
+						   socket.IPPROTO_RAW)
+	sender.sendto(full_pack, (str(T_IP), T_PORT))
+
+	receiver = socket.socket(socket.AF_INET, 
+							 socket.SOCK_RAW, 
+							 socket.IPPROTO_TCP)
+	receiver.settimeout(0.2)
+	try:
+		response, responseSender = receiver.recvfrom(65535)
+	except TimeoutError:
+		return 2
+	finally:
+		receiver.close()
+	sender.close()
+	receiver.close()
+
+	if responseSender[0] != str(T_IP):
+		return 2
+
+	ip_header_extracted, upper_layer_bytes = ip.IP.extract(response)
+	#print(ip_header_extracted, '\n' , upper_layer_bytes, '\n')
+	
+	# extrai os primeiros 20 bytes do upper_layer pra ter o tcp header
+	tcp_header_ext, payload = tcp.TCPPacket.extract(upper_layer_bytes[:20])
+	#print(tcp_header_ext, '\n', payload, '\n')
+	flags = (
+		tcp_header_ext[6] & 1, 		  # FIN
+		tcp_header_ext[6] & (1 << 1), # SYN
+		tcp_header_ext[6] & (1 << 2), # RST
+		tcp_header_ext[6] & (1 << 3), # PSH
+		tcp_header_ext[6] & (1 << 4), # ACK
+		tcp_header_ext[6] & (1 << 5), # URG
+		tcp_header_ext[6] & (1 << 6), # ECE
+		tcp_header_ext[6] & (1 << 7)  # CWR
+	)
+	if flags[1] and flags[4]:
+		return 0
+	return 1
 
 def main():
 	arg_len = len(sys.argv)
@@ -188,7 +216,7 @@ def main():
 	if not check_port_range(port_list):
 		errors.error_exit(3)
 
-	if isinstance(conn_ip, (ip.IPv4Address, ip.IPv6Address)):
+	if isinstance(conn_ip, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
 		status_code = host_scan(conn_ip, port_list)
 	else:
 		status_code = wide_scan(conn_ip, port_list)
