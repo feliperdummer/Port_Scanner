@@ -114,7 +114,7 @@ class IP:
 		flags = 2
 		frag_offset = 0
 		flags_frag_offset = (flags << 13) | frag_offset
-		ttl = 127
+		ttl = 254
 		
 		# header provisorio para calcular o check_sum
 		header = struct.pack(

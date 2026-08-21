@@ -1,15 +1,15 @@
 import sys, ipaddress, socket, errno, struct
 import datetime as dt
 
-from scapy.all import srp1, sr1, Ether, ARP, IP, ICMP, TCP, UDP
+from scapy.all import sr1, IP, ICMP, TCP, UDP
 from getmac import get_mac_address as getmac
 
 import arp, ether, tcp, ip, flag_parser, errors
 
-machine_ip_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-machine_ip_socket.connect_ex(("8.8.8.8", 80))
-machine_ip = machine_ip_socket.getsockname()[0]
-machine_ip_socket.close()
+local_net_ip_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+local_net_ip_socket.connect_ex(("8.8.8.8", 80))
+local_net_ip = local_net_ip_socket.getsockname()[0]
+local_net_ip_socket.close()
 
 def create_ipaddress(T_IP):
 	try:
@@ -34,11 +34,12 @@ def resolve_ip_string(ip_string):
 	return conn_ip
 
 def check_port_range(port_list):
-	return (port_list and min(port_list) >= 1
-					  and max(port_list) <= 65535)
+	return (port_list 
+			and min(port_list) >= 1
+			and max(port_list) <= 65535)
 
 def exec_arp_ping(T_IP):
-	global machine_ip
+	global local_net_ip
 	arp_header = arp.Arp(
 		1, 
 		0x800,
@@ -46,7 +47,7 @@ def exec_arp_ping(T_IP):
 		4,
 		1,
 		getmac(),
-		machine_ip,
+		local_net_ip,
 		b'\x00' * 6,
 		str(T_IP)).build()
 
@@ -89,20 +90,98 @@ def exec_arp_ping(T_IP):
 		
 		return True
 
-	return response;
+	return response
+
+def exec_syn_ping(T_IP, T_PORT):
+	code = 2
+	global local_net_ip
+
+	# SYN PACK
+	syn_pack = (
+		ip.IP(
+			6, 
+			20, 
+			local_net_ip, 
+			str(T_IP)
+		).build()
+		+
+		tcp.TCPPacket(
+			local_net_ip,      
+			8787,
+			str(T_IP),  
+			T_PORT,
+			0, 		  
+			0,
+			0b00000010
+		).build() 
+	)
+
+	sender = socket.socket(
+		socket.AF_INET, 
+		socket.SOCK_RAW, 
+		socket.IPPROTO_RAW
+	)
+	sender.sendto(syn_pack, (str(T_IP), T_PORT))
+
+	try:
+		receiver = socket.socket(
+			socket.AF_INET, 
+			socket.SOCK_RAW, 
+			socket.IPPROTO_TCP
+		)
+		receiver.settimeout(0.1)
+		response, responseSender = receiver.recvfrom(65535)
+	except TimeoutError:
+		return code
+	finally:
+		receiver.close()
+
+	if responseSender[0] != str(T_IP):
+		return code
+
+	ip_header_extracted, upper_layer_bytes = ip.IP.extract(response)
+	
+	# extrai os primeiros 20 bytes do upper_layer_bytes pra ter o tcp header
+	tcp_header_ext, payload = tcp.TCPPacket.extract(upper_layer_bytes[:20])
+
+	flags = tcp.TCPPacket.extract_flags_only(tcp_header_ext[6])
+	if flags[1] and flags[4]: # SYN-ACK -> ABERTA
+		code = 0
+	elif flags[2]: # RST-ACK -> FECHADA
+		code = 1
+
+	sender.close()
+
+	return code
 
 def exec_icmp_ping(T_IP):
+	print('icmp executado') # debug
 	return sr1(IP(dst=str(T_IP))/
 				ICMP(),
 					timeout=2, verbose=False)
 
 def exec_tcp_ping(T_IP):
-	return try_syn_ping(T_IP, 80, False) != 2
+	print('tcp ping executado') # debug
+	return exec_syn_ping(T_IP, 80) != 2
 
 def exec_udp_ping(T_IP):
-	return sr1(IP(dst=str(T_IP))/
+	print('udp ping executado') # debug 
+	return sr1(IP(dst=str(T_IP))/ 
 				UDP(dport=0),
 					timeout=2, verbose=False)
+
+def exec_self_scan_scapy(T_IP, port):
+	response = sr1(
+		IP(dst='127.0.0.1') /
+		TCP(dport=port, flags='S'),
+		timeout=1, verbose=False
+	)
+	if not response:
+		return 2
+	if response.haslayer(TCP) and response[TCP].flags=='SA':
+		return 0
+	elif response[TCP].flags=='R' or response[TCP].flags=='RA':
+		return 1
 
 def host_discovery(T_IP):
 	if T_IP.is_private:
@@ -124,12 +203,11 @@ def host_scan(T_IP, port_list):
 	if T_IP.version == 6:
 		errors.error_exit(2)
 
-	is_loopback = False
+	scan_function = exec_syn_ping
 
 	# self scan
-	if machine_ip == str(T_IP) or str(T_IP)=='127.0.0.1':
-		T_IP = ipaddress.ip_address('127.0.0.1')
-		is_loopback = True
+	if local_net_ip == str(T_IP) or str(T_IP)=='127.0.0.1':
+		scan_function = exec_self_scan_scapy
 	elif not host_discovery(T_IP):
 		print(f'{T_IP} HOST INALCANÇÁVEL')
 		print('===============================\n')
@@ -137,7 +215,7 @@ def host_scan(T_IP, port_list):
 
 	print('PORTA\tESTADO\n')
 	for port in port_list:
-		code = try_syn_ping(T_IP, port, is_loopback)
+		code = scan_function(T_IP, port)
 		if code == 0:
 			print(f'{port}\tABERTA')
 		elif code == 1:
@@ -145,72 +223,6 @@ def host_scan(T_IP, port_list):
 		elif code == 2:
 			print(f'{port}\tSEM RESPOSTA/LIMITE DE TEMPO')
 	print('===============================\n')
-
-def try_syn_ping(T_IP, T_PORT, is_loopback: False):
-	code = 2
-	seq, ack = 0, 0
-	global machine_ip
-	
-	if is_loopback:
-		host_ip = '127.0.0.1'
-	else:
-		host_ip = machine_ip
-
-	# montagem do pacote que manda a requisicao por conexao (SYN)
-	tcp_packet = tcp.TCPPacket(host_ip,      8787,
-							   str(T_IP),  T_PORT,
-							   seq, 		  ack,
-							   0b00000010).build()
-	ip_packet = ip.IP(6, len(tcp_packet), 
-					  host_ip, str(T_IP)).build()
-	full_pack = ip_packet + tcp_packet
-
-	sender = socket.socket(socket.AF_INET, 
-						   socket.SOCK_RAW, 
-						   socket.IPPROTO_RAW)
-	sender.sendto(full_pack, (str(T_IP), T_PORT))
-
-	try:
-		receiver = socket.socket(socket.AF_INET, 
-							 	 socket.SOCK_RAW, 
-							 	 socket.IPPROTO_TCP)
-		receiver.settimeout(0.1)
-		response, responseSender = receiver.recvfrom(65535)
-	except TimeoutError:
-		return code
-	finally:
-		receiver.close()
-
-	if responseSender[0] != str(T_IP):
-		return code
-
-	ip_header_extracted, upper_layer_bytes = ip.IP.extract(response)
-	#print(ip_header_extracted, '\n' , upper_layer_bytes, '\n')
-	
-	# extrai os primeiros 20 bytes do upper_layer_bytes pra ter o tcp header
-	tcp_header_ext, payload = tcp.TCPPacket.extract(upper_layer_bytes[:20])
-	#print(tcp_header_ext, '\n', payload, '\n')
-
-	flags = tcp.TCPPacket.extract_flags_only(tcp_header_ext[6])
-	if flags[1] and flags[4]: # SYN-ACK
-		# montagem do pacote que reseta a conexao (RST-ACK)
-		seq = tcp_header_ext[3]
-		ack = tcp_header_ext[2] + tcp_header_ext[4]
-		tcp_packet = tcp.TCPPacket(host_ip,      8787,
-								   str(T_IP),  T_PORT,
-								   seq, 		  ack,
-								   0b00010100).build()
-		ip_packet = ip.IP(6, len(tcp_packet), 
-						  host_ip, str(T_IP)).build()
-		full_pack = ip_packet + tcp_packet
-		sender.sendto(full_pack, (str(T_IP), T_PORT))
-		code = 0
-	elif flags[2]: # RST-ACK
-		code = 1
-
-	sender.close()
-
-	return code
 
 def main():
 	arg_len = len(sys.argv)
