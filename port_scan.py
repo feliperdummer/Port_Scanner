@@ -97,9 +97,7 @@ def exec_icmp_ping(T_IP):
 					timeout=2, verbose=False)
 
 def exec_tcp_ping(T_IP):
-	return sr1(IP(dst=str(T_IP))/
-				TCP(dport=80, flags='S'),
-					timeout=2, verbose=False)
+	return try_syn_ping(T_IP, 80, False) != 2
 
 def exec_udp_ping(T_IP):
 	return sr1(IP(dst=str(T_IP))/
@@ -107,10 +105,6 @@ def exec_udp_ping(T_IP):
 					timeout=2, verbose=False)
 
 def host_discovery(T_IP):
-	global machine_ip
-	# self-scan
-	if str(T_IP) == machine_ip:
-		return True
 	if T_IP.is_private:
 		return exec_arp_ping(T_IP)
 	return (exec_icmp_ping(T_IP) or
@@ -130,14 +124,20 @@ def host_scan(T_IP, port_list):
 	if T_IP.version == 6:
 		errors.error_exit(2)
 
-	if not host_discovery(T_IP):
+	is_loopback = False
+
+	# self scan
+	if machine_ip == str(T_IP) or str(T_IP)=='127.0.0.1':
+		T_IP = ipaddress.ip_address('127.0.0.1')
+		is_loopback = True
+	elif not host_discovery(T_IP):
 		print(f'{T_IP} HOST INALCANÇÁVEL')
 		print('===============================\n')
 		return
 
 	print('PORTA\tESTADO\n')
 	for port in port_list:
-		code = try_syn_scan(T_IP, port)
+		code = try_syn_ping(T_IP, port, is_loopback)
 		if code == 0:
 			print(f'{port}\tABERTA')
 		elif code == 1:
@@ -146,13 +146,23 @@ def host_scan(T_IP, port_list):
 			print(f'{port}\tSEM RESPOSTA/LIMITE DE TEMPO')
 	print('===============================\n')
 
-def try_syn_scan(T_IP, T_PORT):
+def try_syn_ping(T_IP, T_PORT, is_loopback: False):
+	code = 2
+	seq, ack = 0, 0
 	global machine_ip
-	tcp_packet = tcp.TCPPacket(machine_ip, 8787,
-							   str(T_IP), T_PORT,
+	
+	if is_loopback:
+		host_ip = '127.0.0.1'
+	else:
+		host_ip = machine_ip
+
+	# montagem do pacote que manda a requisicao por conexao (SYN)
+	tcp_packet = tcp.TCPPacket(host_ip,      8787,
+							   str(T_IP),  T_PORT,
+							   seq, 		  ack,
 							   0b00000010).build()
 	ip_packet = ip.IP(6, len(tcp_packet), 
-					  machine_ip, str(T_IP)).build()
+					  host_ip, str(T_IP)).build()
 	full_pack = ip_packet + tcp_packet
 
 	sender = socket.socket(socket.AF_INET, 
@@ -160,41 +170,47 @@ def try_syn_scan(T_IP, T_PORT):
 						   socket.IPPROTO_RAW)
 	sender.sendto(full_pack, (str(T_IP), T_PORT))
 
-	receiver = socket.socket(socket.AF_INET, 
-							 socket.SOCK_RAW, 
-							 socket.IPPROTO_TCP)
-	receiver.settimeout(0.2)
 	try:
+		receiver = socket.socket(socket.AF_INET, 
+							 	 socket.SOCK_RAW, 
+							 	 socket.IPPROTO_TCP)
+		receiver.settimeout(0.1)
 		response, responseSender = receiver.recvfrom(65535)
 	except TimeoutError:
-		return 2
+		return code
 	finally:
 		receiver.close()
-	sender.close()
-	receiver.close()
 
 	if responseSender[0] != str(T_IP):
-		return 2
+		return code
 
 	ip_header_extracted, upper_layer_bytes = ip.IP.extract(response)
 	#print(ip_header_extracted, '\n' , upper_layer_bytes, '\n')
 	
-	# extrai os primeiros 20 bytes do upper_layer pra ter o tcp header
+	# extrai os primeiros 20 bytes do upper_layer_bytes pra ter o tcp header
 	tcp_header_ext, payload = tcp.TCPPacket.extract(upper_layer_bytes[:20])
 	#print(tcp_header_ext, '\n', payload, '\n')
-	flags = (
-		tcp_header_ext[6] & 1, 		  # FIN
-		tcp_header_ext[6] & (1 << 1), # SYN
-		tcp_header_ext[6] & (1 << 2), # RST
-		tcp_header_ext[6] & (1 << 3), # PSH
-		tcp_header_ext[6] & (1 << 4), # ACK
-		tcp_header_ext[6] & (1 << 5), # URG
-		tcp_header_ext[6] & (1 << 6), # ECE
-		tcp_header_ext[6] & (1 << 7)  # CWR
-	)
-	if flags[1] and flags[4]:
-		return 0
-	return 1
+
+	flags = tcp.TCPPacket.extract_flags_only(tcp_header_ext[6])
+	if flags[1] and flags[4]: # SYN-ACK
+		# montagem do pacote que reseta a conexao (RST-ACK)
+		seq = tcp_header_ext[3]
+		ack = tcp_header_ext[2] + tcp_header_ext[4]
+		tcp_packet = tcp.TCPPacket(host_ip,      8787,
+								   str(T_IP),  T_PORT,
+								   seq, 		  ack,
+								   0b00010100).build()
+		ip_packet = ip.IP(6, len(tcp_packet), 
+						  host_ip, str(T_IP)).build()
+		full_pack = ip_packet + tcp_packet
+		sender.sendto(full_pack, (str(T_IP), T_PORT))
+		code = 0
+	elif flags[2]: # RST-ACK
+		code = 1
+
+	sender.close()
+
+	return code
 
 def main():
 	arg_len = len(sys.argv)

@@ -48,11 +48,15 @@ class TCPPacket:
                  src_port:  int,
                  dst_host:  str,
                  dst_port:  int,
+                 seq_num:   int = 0,
+                 ack_num:   int = 0,
                  flags:     int = 0):
         self.src_host = src_host
         self.src_port = src_port
         self.dst_host = dst_host
         self.dst_port = dst_port
+        self.seq_num = seq_num
+        self.ack_num = ack_num
         self.flags = flags
 
     def build(self) -> bytes:
@@ -60,8 +64,8 @@ class TCPPacket:
             '!HHIIBBHHH',
             self.src_port,  # Source Port
             self.dst_port,  # Destination Port
-            0,              # Sequence Number
-            0,              # Acknoledgement Number
+            self.seq_num,   # Sequence Number
+            self.ack_num,   # Acknoledgement Number
             5 << 4,         # Data Offset
             self.flags,     # Flags
             8192,           # Window
@@ -101,3 +105,14 @@ class TCPPacket:
         )
 
         return (tcp_header_good, packet[:data_offset])
+
+    def extract_flags_only(flags: int):
+        return (flags & 1,        # FIN
+                flags & (1 << 1), # SYN
+                flags & (1 << 2), # RST
+                flags & (1 << 3), # PSH
+                flags & (1 << 4), # ACK
+                flags & (1 << 5), # URG
+                flags & (1 << 6), # ECE
+                flags & (1 << 7)  # CWR
+        )
