@@ -129,7 +129,7 @@ def exec_syn_ping(T_IP, T_PORT):
 			socket.SOCK_RAW, 
 			socket.IPPROTO_TCP
 		)
-		receiver.settimeout(0.1)
+		receiver.settimeout(0.5)
 		response, responseSender = receiver.recvfrom(65535)
 	except TimeoutError:
 		return code
@@ -214,12 +214,10 @@ def host_scan(T_IP, port_list):
 		code = scan_function(T_IP, port)
 		if code == 0:
 			print(f'{port}\tABERTA')
-		elif code == 1:
-			if len(port_list) <= 30 or port in extra.notable_ports:
-				print(f'{port}\tFECHADA')
-		elif code == 2:
-			if len(port_list) <= 30 or port in extra.notable_ports:
-				print(f'{port}\tSEM RESPOSTA/LIMITE DE TEMPO')
+		elif len(port_list) <= 30 or port in extra.notable_ports:
+			estado = 'FECHADA' if code==1 \
+				else 'SEM RESPOSTA/LIMITE DE TEMPO'
+			print(f'{port}\t{estado}')
 	print('===============================\n')
 
 def main():
