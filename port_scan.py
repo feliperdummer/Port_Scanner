@@ -22,7 +22,7 @@ def create_ipnetwork(T_IP):
 	try:
 		ip_net = ipaddress.ip_network(T_IP)
 	except ValueError:
-		conn_ip = None
+		ip_net = None
 	return ip_net
 
 def resolve_ip_string(ip_string):
