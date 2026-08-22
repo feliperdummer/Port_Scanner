@@ -57,7 +57,7 @@ def parse_portas(port_list: str) -> list[int]:
 			else:
 				raise FlagParsingException('sintaxe de flags incorreta')
 		prev_c = c
-	return sorted(l)
+	return sorted(l) if min(l) >= 1 and max(l) <= 65535 else None
 
 def digit(c):
 	return c != None and ord(c) >= 48 and ord(c) <= 57

@@ -33,11 +33,6 @@ def resolve_ip_string(ip_string):
 		conn_ip = create_ipaddress(ip_string)
 	return conn_ip
 
-def check_port_range(port_list):
-	return (port_list 
-			and min(port_list) >= 1
-			and max(port_list) <= 65535)
-
 def exec_arp_ping(T_IP):
 	global local_net_ip
 	arp_header = arp.Arp(
@@ -237,7 +232,7 @@ def main():
 	except flag_parser.FlagParsingException:
 		errors.error_exit(4)
 
-	if not check_port_range(port_list):
+	if not port_list:
 		errors.error_exit(3)
 
 	if isinstance(conn_ip, (ipaddress.IPv4Address, ipaddress.IPv6Address)):

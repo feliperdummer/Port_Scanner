@@ -6,7 +6,10 @@ code_one = "formato endereco de rede: (0-255).(0-255).(0-255).(0-255)/(0-32)"
 
 code_two = "enderecos do tipo IPv6 ainda nao sao suportados"
 
-code_three = "intervalo de portas possivel: 1 - 65535"
+code_three = """
+erro: portas fora do intervalo valido
+intervalo de portas possivel: 1 - 65535
+"""
 
 code_four = """
 formato de portas incorreto
