@@ -4,7 +4,7 @@ import datetime as dt
 from scapy.all import sr1, IP, ICMP, TCP, UDP
 from getmac import get_mac_address as getmac
 
-import arp, ether, tcp, ip, flag_parser, errors
+import arp, ether, tcp, ip, flag_parser, errors, extra
 
 local_net_ip_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 local_net_ip_socket.connect_ex(("8.8.8.8", 80))
@@ -135,6 +135,7 @@ def exec_syn_ping(T_IP, T_PORT):
 		return code
 	finally:
 		receiver.close()
+		sender.close()
 
 	if responseSender[0] != str(T_IP):
 		return code
@@ -150,22 +151,17 @@ def exec_syn_ping(T_IP, T_PORT):
 	elif flags[2]: # RST-ACK -> FECHADA
 		code = 1
 
-	sender.close()
-
 	return code
 
 def exec_icmp_ping(T_IP):
-	print('icmp executado') # debug
 	return sr1(IP(dst=str(T_IP))/
 				ICMP(),
 					timeout=2, verbose=False)
 
 def exec_tcp_ping(T_IP):
-	print('tcp ping executado') # debug
 	return exec_syn_ping(T_IP, 80) != 2
 
 def exec_udp_ping(T_IP):
-	print('udp ping executado') # debug 
 	return sr1(IP(dst=str(T_IP))/ 
 				UDP(dport=0),
 					timeout=2, verbose=False)
@@ -219,9 +215,11 @@ def host_scan(T_IP, port_list):
 		if code == 0:
 			print(f'{port}\tABERTA')
 		elif code == 1:
-			print(f'{port}\tFECHADA')
+			if len(port_list) <= 30 or port in extra.notable_ports:
+				print(f'{port}\tFECHADA')
 		elif code == 2:
-			print(f'{port}\tSEM RESPOSTA/LIMITE DE TEMPO')
+			if len(port_list) <= 30 or port in extra.notable_ports:
+				print(f'{port}\tSEM RESPOSTA/LIMITE DE TEMPO')
 	print('===============================\n')
 
 def main():

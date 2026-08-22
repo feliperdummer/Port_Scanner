@@ -16,7 +16,8 @@ formatos possiveis:
 \t[x]
 \t[] ou [-]
 (*) todo intervalo deve ter um comeco e um fim
-(**) para selecionar todas as portas, utilize '[]' ou '[-]'"""
+(**) para selecionar todas as portas, utilize '[]' ou '[-]'
+(***) para portas notaveis, utilize 'notable'"""
 
 error_codes = {
 	0: code_zero,

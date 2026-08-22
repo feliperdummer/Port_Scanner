@@ -1,7 +1,11 @@
+import extra
+
 class FlagParsingException(Exception):
 	pass
 
 def parse_portas(port_list: str) -> list[int]:
+	if port_list == 'notable':
+		return sorted(list(extra.notable_ports))
 	if len(port_list) < 2:
 		raise FlagParsingException('sintaxe de flags incorreta')
 	if port_list[0] != '[' or port_list[-1] != ']':
