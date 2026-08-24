@@ -1,0 +1,121 @@
+vou colocar algumas coisas aqui pra me ajudar a lembrar de como
+funciona o socket (LINUX)
+
+Estrutura do construtor de socket em Python:
+
+	socket(familia, tipo, protocolo)
+
+familia: Define como pacotes enviados por aquele socket serao enderecados,
+	     no caso de usar IPv4 (meu caso), esse campo tera valor AF_INET
+
+tipo: Quando associado a AF_INET, esse campo normalmente tem tres valores
+	  possiveis:
+
+	  	SOCK_STREAM: Indica ao sistema operacional que voce vai cuidar da cama-
+	  				 da acima da camada 4 (Transporte) e que o protocolo da camada de transporte vai ser TCP
+
+	  	SOCK_DGRAM: Indica ao sistema operacional que voce vai cuidar da cama-
+	  				da acima da camada 4 (Transporte) e que o protocolo da camada de transporte vai ser UDP
+
+	  	SOCK_RAW: Indica que voce vai cuidar da camada 4 e acima. Isso signifi-
+	  			  ca que voce mesmo tera que montar o pacote TCP ou datagrama
+	  			  UDP, assim como o protocolo da camada de aplicacao. Caso voce
+	  			  for mandar um pacote ICMP forjado, voce vai usar SOCK_RAW mas
+	  			  no campo protocolo vai usar IPPROTO_ICMP.
+
+protocolo: Aqui com certeza o mais confuso. Quando usado com AF_INET, isso nor-
+		   malmente indica qual sera o protocolo usado no campo Protocol do pa-
+		   cote IP, mas com um nuance. Quando esse campo levar o valor de 
+		   IPPROTO_RAW, isso indica que voce tambem vai cuidar do proprio paco-
+		   te IP (LINUX). Entao basicamente fica assim:
+
+		   	AF_INET + SOCK_RAW + IPPROTO_RAW: Voce fica responsavel pelos paco-
+		   									  tes das camadas 3 (IP), 4 (Trans-
+		   									  porte) e acima (aplicacao).
+
+		   	AF_INET + SOCK_* + IPPROTO_*: Normalmente quando voce usa algum
+		   								  SOCK_ que nao seja RAW, voce nao pre-
+		   								  cisa especificar o campo protocolo 
+		   								  tambem, porque o SO vai entender que
+		   								  vai ser TCP ou UDP
+
+		   	AF_INET + SOCK_RAW + IPPROTO_*: Quando voce ainda usa SOCK_RAW mas
+		   									especifica um protocolo ao inves de
+		   									usar IPPROTO_RAW, voce pode especi-
+		   									ficar qual tipo de protocolo acima
+		   									da camada de rede (ou na mesma, no
+		   									caso de ICMP) voce vai usar. Entao
+		   									caso eu quisesse mandar um pacote
+		   									ICMP onde EU mesmo montaria o ICMP,
+		   									era so usar AF_INET+SOCK_RAW+
+		   									IPPROTO_ICMP.  
+
+Exemplos de pacotes que delegam a montagem do pacote IP mas trabalham com ICMP
+ou montam o pacote TCP:
+
+	AF_INET + SOCK_RAW + IPPROTO_TCP -> Montagem do pacote TCP
+
+	AF_INET + SOCK_RAW + IPPROTO_ICMP -> Montagem do pacote ICMP
+
+	AF_INET + SOCK_RAW + IPPROTO_UDP -> Montagem do pacote UDP
+
+Montagem dos pacotes das camadas de aplicacao, transporte e rede:
+
+	AF_INET + SOCK_RAW + IPPROTO_RAW -> Montagem de IP, transporte e acima
+
+Montagem dos pacotes de aplicacao:
+
+	AF_INET + SOCK_STREAM + IPPROTO_TCP -> Montagem de aplicacao para TCP
+
+	AF_INET + SOCK_DGRAM + IPPROTO_UDP -> Montagem de aplicacao para UDP
+
+Montagem do frame ETHERNET:
+
+	Aqui muda um pouco a historia porque agora o campo protocolo nao significa
+	mais qual o protocolo acima da camada de rede, e sim o protocolo acima da
+	camada de Ethernet (campo Ethertype no frame Ethernet).
+
+	O campo EtherType e um campo de dois bytes no frame Ethernet.
+
+	valores comuns:
+
+		0x800 -> IPv4
+
+		0x806 -> ARP
+
+		0x86DD -> IPv6
+
+		0x8100 -> VLAN Ta (IEEE 802.1Q)
+
+	Entao seu socket seria assim:
+
+		AF_PACKET + SOCK_RAW + socket.htons(algum dos valores acima)
+
+	Exemplos:
+
+		AF_PACKET + SOCK_RAW + socket.htons(0x800) -> IPv4
+
+		AF_PACKET + SOCK_RAW + socket.htons(0x806) -> ARP
+
+
+
+COMO EU AMO SER OTARIO DO SISTEMA OPERACIONAL, VAMO PRA MAIS UMA:
+
+	Voce usar:
+
+		AF_INET + SOCK_RAW + IPPROTO_ICMP 
+
+	significa que o campo Protocol no cabecalho IP vai ser 1 (ICMP) e que
+	o SO vai construir o pacote IP pra voce no envio, sim, apenas no envio.
+	Quando voce recebe os bytes de resposta de volta, o cabecalho IP vai
+	estar ali no meio (pra ser mais exato, na frente :]). 
+
+	Entao caso voce veja "unpack requires a buffer of 12 bytes"	na hora de
+	desempacotar a resposta usando o modulo struct, e porque voce precisa
+	tirar o cabecalho IP da frente (20 bytes, ou mais, meu modulo cuida disso).
+
+	Isso acontece com outros tipos de sockets tambem. Se voce olhar no metodo
+	exec_syn_ping no arquivo port_scan.py, vai ver que eu recebo a resposta por
+	meio de um socket que tem como protocolo do cabecalho ip o protocolo TCP, 
+	mas mesmo assim eu ainda preciso tirar o cabecalho IP da frente pra depois
+	ter acesso aos bytes correspondentes ao pacote TCP.

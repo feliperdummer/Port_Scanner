@@ -4,7 +4,7 @@ import datetime as dt
 from scapy.all import sr1, IP, ICMP, TCP, UDP
 from getmac import get_mac_address as getmac
 
-import arp, ether, tcp, ip, flag_parser, errors, extra
+import arp, ether, tcp, ip, icmp, flag_parser, errors, extra
 
 local_net_ip_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 local_net_ip_socket.connect_ex(("8.8.8.8", 80))
@@ -148,18 +148,63 @@ def exec_syn_ping(T_IP, T_PORT):
 
 	return code
 
+#return 1 for success, 0 for fail
 def exec_icmp_ping(T_IP):
-	return sr1(IP(dst=str(T_IP))/
-				ICMP(),
-					timeout=2, verbose=False)
+	global local_net_ip
+	code = 0
+	icmp_data = 1234
 
-def exec_tcp_ping(T_IP):
+	icmp_echo = icmp.Echo(8, icmp_data).build()
+	send = socket.socket(
+		socket.AF_INET,
+		socket.SOCK_RAW,
+		socket.IPPROTO_ICMP
+	)
+	send.sendto(icmp_echo, (str(T_IP), 0))
+	try:
+		recv = socket.socket(
+			socket.AF_INET,
+			socket.SOCK_RAW,
+			socket.IPPROTO_ICMP
+		)
+		recv.settimeout(0.5)
+		response, sender = recv.recvfrom(65535)
+	except TimeoutError:
+		return code
+	finally:
+		send.close()
+		recv.close()
+
+	ip_header, remaining = ip.IP.extract(response)
+
+	if ip_header[10]!=str(T_IP) or ip_header[11]!=local_net_ip:
+		return code
+
+	icmp_header = icmp.Echo.extract(remaining)
+
+	if icmp_header[0]!=0 or icmp_header[5]!=icmp_data:
+		return code
+
+	return 1
+
+
+def try_icmp_ping(T_IP):
+	return exec_icmp_ping(T_IP) == 1
+
+def try_tcp_ping(T_IP):
 	return exec_syn_ping(T_IP, 80) != 2
 
-def exec_udp_ping(T_IP):
+def try_udp_ping(T_IP):
 	return sr1(IP(dst=str(T_IP))/ 
 				UDP(dport=0),
 					timeout=2, verbose=False)
+
+def host_discovery(T_IP):
+	if T_IP.is_private:
+		return exec_arp_ping(T_IP)
+	return (try_icmp_ping(T_IP) or
+		    try_tcp_ping (T_IP) or
+		    try_udp_ping (T_IP)) 
 
 def exec_self_scan_scapy(T_IP, port):
 	response = sr1(
@@ -173,13 +218,6 @@ def exec_self_scan_scapy(T_IP, port):
 		return 0
 	elif response[TCP].flags=='R' or response[TCP].flags=='RA':
 		return 1
-
-def host_discovery(T_IP):
-	if T_IP.is_private:
-		return exec_arp_ping(T_IP)
-	return (exec_icmp_ping(T_IP) or
-		    exec_tcp_ping (T_IP) or
-		    exec_udp_ping (T_IP)) 
 
 def wide_scan(T_IP, port_list):
 	print(f'Target Network: {T_IP}\n')
