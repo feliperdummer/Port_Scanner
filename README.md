@@ -18,7 +18,7 @@ protocolos de redes comuns, como TCP, UDP, ICMP, IP, ARP e Ethernet.
 	mesmo com privilegios de admin, e tambem pra conseguir fazer
 	o projeto funcionar antes de qualquer mudanca mais drastica.
 
-**Implementacao dos pacotes ARP e Ethernet**
+**Implementacao dos pacotes Ethernet, ARP, IP, ICMP e TCP**
 	
 	Apos os primeiros testes utilizando Scapy, eu percebi que ele
 	faz o program ficar lento demais pra um escaneador de portas
