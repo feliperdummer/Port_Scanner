@@ -99,7 +99,7 @@ Montagem do frame ETHERNET:
 
 
 
-pegadinha do sistema operacional:
+PEGADINHA DO SISTEMA OPERACIONAL:
 
 	Voce usar:
 

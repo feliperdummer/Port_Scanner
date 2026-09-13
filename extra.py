@@ -1,4 +1,4 @@
-notable_ports = {
+notable = {
 #   FTP FTP SSH TELNET SMTP
 	20, 21, 22, 23,    25, 
 #   DNS
