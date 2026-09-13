@@ -267,7 +267,7 @@ def main():
 
 	try:
 		port_list = flag_parser.parse_portas(port_list_string)
-	except flag_parser.FlagParsingException:
+	except flag_parser.FlagParserException:
 		errors.error_exit(4)
 
 	if not port_list:
