@@ -43,19 +43,19 @@ def exec_arp_ping(T_IP):
 		1,
 		getmac(),
 		local_net_ip,
-		b'\x00' * 6,
+		'00:00:00:00:00:00',
 		str(T_IP)).build()
 
 	ether_header = ether.Ether(
-		b'\xff' * 6,
+		'FF:FF:FF:FF:FF:FF',
 		getmac(),
 		0x806,
 		arp_header,
 		28).build()
 
-	sock = 	socket.socket(socket.AF_PACKET, 
-			socket.SOCK_RAW, 
-			socket.htons(0x806))
+	sock = socket.socket(socket.AF_PACKET, 
+		   socket.SOCK_RAW, 
+		   socket.htons(0x806))
 	sock.settimeout(0.1)
 	sock.bind(("eth0", 0))
 	sock.send(ether_header)
