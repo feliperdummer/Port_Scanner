@@ -1,4 +1,4 @@
-import struct, socket, array, tcp
+import struct, socket, array, stack.tcp
 
 from socket import inet_aton, inet_ntoa
 

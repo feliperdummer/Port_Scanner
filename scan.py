@@ -1,10 +1,10 @@
-import sys, ipaddress, socket, errno, struct
-import datetime as dt
+import sys, ipaddress, socket, errno, struct, datetime as dt
 
 from scapy.all import sr1, IP, ICMP, TCP, UDP
 from getmac import get_mac_address as getmac
 
-import arp, ether, tcp, ip, icmp, flag_parser, errors, extra
+from stack import arp, ether, tcp, ip, icmp 
+from extra import flag_parser, errors, extra
 
 local_net_ip_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 local_net_ip_socket.connect_ex(("8.8.8.8", 80))
@@ -56,7 +56,7 @@ def exec_arp_ping(T_IP):
 	sock = 	socket.socket(socket.AF_PACKET, 
 			socket.SOCK_RAW, 
 			socket.htons(0x806))
-	sock.settimeout(0.5)
+	sock.settimeout(0.1)
 	sock.bind(("eth0", 0))
 	sock.send(ether_header)
 
@@ -124,7 +124,7 @@ def exec_syn_ping(T_IP, T_PORT):
 			socket.SOCK_RAW, 
 			socket.IPPROTO_TCP
 		)
-		receiver.settimeout(0.5)
+		receiver.settimeout(0.1)
 		response, responseSender = receiver.recvfrom(65535)
 	except TimeoutError:
 		return code
@@ -167,7 +167,7 @@ def exec_icmp_ping(T_IP):
 			socket.SOCK_RAW,
 			socket.IPPROTO_ICMP
 		)
-		recv.settimeout(0.5)
+		recv.settimeout(0.1)
 		response, sender = recv.recvfrom(65535)
 	except TimeoutError:
 		return code
@@ -197,7 +197,7 @@ def try_tcp_ping(T_IP):
 def try_udp_ping(T_IP):
 	return sr1(IP(dst=str(T_IP))/ 
 				UDP(dport=0),
-					timeout=2, verbose=False)
+					timeout=0.5, verbose=False)
 
 def host_discovery(T_IP):
 	if T_IP.is_private:
@@ -226,6 +226,7 @@ def wide_scan(T_IP, port_list):
 		host_scan(host, port_list)
 
 def host_scan(T_IP, port_list):
+	global local_net_ip
 	print('===============================')
 	print(f'Target IP: {T_IP}\n')
 
@@ -243,14 +244,15 @@ def host_scan(T_IP, port_list):
 		return
 
 	print('PORTA\tESTADO\n')
-	for port in port_list:
-		code = scan_function(T_IP, port)
-		if code == 0:
-			print(f'{port}\tABERTA')
-		elif len(port_list) <= 30 or port in extra.notable_ports:
-			estado = 'FECHADA' if code==1 \
-				else 'SEM RESPOSTA/LIMITE DE TEMPO'
-			print(f'{port}\t{estado}')
+	for interval in port_list:
+		for port in interval:
+			code = scan_function(T_IP, port)
+			if code == 0:
+				print(f'{port}\tABERTA')
+			elif len(interval) <= 30 or port in extra.notable:
+				estado = 'FECHADA' if code==1 \
+					else 'SEM RESPOSTA/LIMITE DE TEMPO'
+				print(f'{port}\t{estado}')
 	print('===============================\n')
 
 def main():
@@ -266,7 +268,7 @@ def main():
 		errors.error_exit(1)
 
 	try:
-		port_list = flag_parser.parse_portas(port_list_string)
+		port_list = flag_parser.new_port_parse(port_list_string)
 	except flag_parser.FlagParserException:
 		errors.error_exit(4)
 
