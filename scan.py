@@ -76,16 +76,16 @@ def exec_arp_ping(T_IP):
 		if ether_header[2] == 0x0806:
 			arp_header = struct.unpack("!HHBBH6s4s6s4s", response[14:42])
 		else:
-			return None
+			return False
 
 		# arp_header[7] e o mac da maquina que espera o arp response, 
 		# ou seja, minha maquina
 		if bytes.fromhex(getmac().replace(':', '')) != arp_header[7]:
-			return None
+			return False
 		
 		return True
 
-	return response
+	return False
 
 def exec_syn_ping(T_IP, T_PORT):
 	code = 2
@@ -143,7 +143,7 @@ def exec_syn_ping(T_IP, T_PORT):
 	flags = tcp.TCPPacket.extract_flags_only(tcp_header_ext[6])
 	if flags[1] and flags[4]: # SYN-ACK -> ABERTA
 		code = 0
-	elif flags[2]: # RST-ACK -> FECHADA
+	elif flags[2] and flags[4]: # RST-ACK -> FECHADA
 		code = 1
 
 	return code
@@ -151,7 +151,7 @@ def exec_syn_ping(T_IP, T_PORT):
 #return 1 for success, 0 for fail
 def exec_icmp_ping(T_IP):
 	global local_net_ip
-	code = 0
+	code = False
 	icmp_data = 1234
 
 	icmp_echo = icmp.Echo(8, icmp_data).build()
@@ -185,7 +185,7 @@ def exec_icmp_ping(T_IP):
 	if icmp_header[0]!=0 or icmp_header[5]!=icmp_data:
 		return code
 
-	return 1
+	return True
 
 
 def try_icmp_ping(T_IP):
@@ -197,20 +197,44 @@ def try_tcp_ping(T_IP):
 def try_udp_ping(T_IP):
 	return sr1(IP(dst=str(T_IP))/ 
 				UDP(dport=0),
-					timeout=0.5, verbose=False)
+					timeout=0.1, verbose=False)
 
 def host_discovery(T_IP):
+	res, count = False ,0
+
+	# arp discovery
 	if T_IP.is_private:
-		return exec_arp_ping(T_IP)
-	return (try_icmp_ping(T_IP) or
-		    try_tcp_ping (T_IP) or
-		    try_udp_ping (T_IP)) 
+		while count < 3 and not res:
+			res = exec_arp_ping(T_IP)
+			count += 1			
+		return res
+
+	# icmp ping
+	res, count = False ,0
+	while count < 3 and not res:
+		res = try_icmp_ping(T_IP)
+		count += 1
+	if res: return res
+
+	# tcp ping
+	count = 0
+	while count < 3 and not res:
+		res = try_tcp_ping(T_IP)
+		count += 1
+	if res: return res
+
+	# udp ping
+	count = 0
+	while count < 3 and not res:
+		res = try_udp_ping(T_IP)
+		count += 1
+	return res
 
 def exec_self_scan_scapy(T_IP, port):
 	response = sr1(
 		IP(dst='127.0.0.1') /
 		TCP(dport=port, flags='S'),
-		timeout=1, verbose=False
+		timeout=0.1, verbose=False
 	)
 	if not response:
 		return 2
@@ -223,12 +247,10 @@ def wide_scan(T_IP, port_list):
 	print(f'Target Network: {T_IP}\n')
 
 	for host in T_IP.hosts():
-		host_scan(host, port_list)
+		host_scan(host, port_list, True)
 
-def host_scan(T_IP, port_list):
+def host_scan(T_IP, port_list, wide_scan = False):
 	global local_net_ip
-	print('===============================')
-	print(f'Target IP: {T_IP}\n')
 
 	if T_IP.version == 6:
 		errors.error_exit(2)
@@ -239,9 +261,14 @@ def host_scan(T_IP, port_list):
 	if local_net_ip == str(T_IP) or str(T_IP)=='127.0.0.1':
 		scan_function = exec_self_scan_scapy
 	elif not host_discovery(T_IP):
-		print(f'{T_IP} HOST INALCANÇÁVEL')
-		print('===============================\n')
+		if not wide_scan:
+			print('===============================')
+			print(f'{T_IP} INALCANÇÁVEL')
+			print('===============================')
 		return
+
+	print('===============================')
+	print(f'Target IP: {T_IP}\n')
 
 	print('PORTA\tESTADO\n')
 	for interval in port_list:

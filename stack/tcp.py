@@ -18,6 +18,107 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+# Estrutura segmento TCP:
+#
+#    0                   1                   2                   3
+#    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#   |          Source Port          |        Destination Port       |
+#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#   |                         Sequence Number                       |
+#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#   |                       Acknowledgment Number                   |
+#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#   |  Data |       |C|E|U|A|P|R|S|F|                               |
+#   | Offset| Rsrvd |W|C|R|C|S|S|Y|I|             Window            |
+#   |       |       |R|E|G|K|H|T|N|N|                               |
+#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#   |           Checksum            |          Urgent Pointer       |
+#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#   |                           [Options]                           |
+#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#   |                                                               :
+#   :                             Data                              :
+#   :                                                               |
+#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#
+#   Source Port: Porta fonte. 16 bits
+#
+#   Destination Port: Porta destino. 16 bits
+#
+#   Sequence Number: Sequence number do primeiro octeto de dados do
+#                    segmento (Exceto quando a SYN flag tá ativa). Se
+#                    a SYN flag estiver ativa, o sequence number é o 
+#                    ISN (initial sequence number) e o primeiro octeto
+#                    é ISN + 1. 32 bits
+#
+#   Ack. Number: Se a flag ACK estiver ativa, esse campo contém o valor 
+#                do próximo número de sequência que o remetente do segmen-
+#                to espera receber. Quando uma conexão é estabelecida, essa
+#                flag sempre está ativa. 32 bits
+#
+#   Data Offset: Número de palavras de 32 bits presentes header. Indica onde
+#                o campo Data começa. O TCP header (até um que inclui options)
+#                é sempre um inteiro múltiplo de 32. 4 bits
+#
+#   Reserved: Campo reservado. Deve ser ignorado na hora de enviar e receber os
+#             pacotes. 4 bits
+#
+#   Bits de controle (Flags) 8 bits: 
+#
+#       CWR: 1 bit -> Congestion Window Reduced
+#
+#       ECE: 1 bit -> ECN-Echo
+#
+#       URG: 1 bit -> Campo de ponteiro urgente
+#
+#       ACK: 1 bit -> Ack flag
+#
+#       PSH: 1 bit -> Função push
+#
+#       RST: 1 bit -> Reseta a conexão
+#
+#       SYN: 1 bit -> Syn flag
+#
+#       FIN: 1 bit -> Finalização de conexão
+#
+#   Window: Número de octetos, começando com o indicado no campo Ack number,
+#           que o remetente do segmento está disposto a aceitar. 
+#
+#   Checksum: Verificador de integridade do pacote. Para calcular esse 
+#             checksum, um pseudo-header é usado. O pseudo-header apa-
+#             rece como um prefixo do cabeçalho original na hora do cál-
+#             culo do checksum. A obter o valor resultante, esse valor
+#             ocupa o campo Checksum do Header TCP. Estrutura do pacote:
+#
+#               IPv4
+#           
+#               +--------+--------+--------+--------+
+#               |            Source Address         |
+#               +--------+--------+--------+--------+
+#               |        Destination Address        |
+#               +--------+--------+--------+--------+
+#               |  zero  |  PTCL  |    TCP Length   |
+#               +--------+--------+--------+--------+
+#
+#               Source Address: Endereço IP fonte. 32 bits
+#           
+#               Destination Address: Endereço IP destino. 32 bits
+#
+#               zero: bits setados como 0. 8 bits
+#
+#               PTCL: Número de protocolo obtido do header IP. 8 bits
+#
+#               TCP Length: Tamanho do header TCP + tamanho do
+#                           campo Data em octetos. Não leva em
+#                           consideração os 12 bytes do pseudoheader.
+#                           16 bits.
+#
+#   Urgent Pointer: Só é interpretado se a flag URg tiver ativa. 16 bits
+#  
+#   Options: size(Options) == (Data Offset-5) * 32. Só está presente quando
+#            Data Offset > 5
+
 import array, socket, struct
 
 # This part of code was adapted from the Scapy project:

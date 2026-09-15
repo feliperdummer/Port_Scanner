@@ -46,6 +46,9 @@ import struct, socket as s
 #		  Tem no mínimo 46 bytes e no máximo 1500 bytes. Caso o pacote 
 #		  da camada superior não tenha tamanho suficiente, basta aplicar
 #		  o padding necessário. min 46 bytes max 1500 bytes
+#
+# "Ah mas e o preamble, SFD e FCS ?"
+# 		A gente finge que não existe porque o SO cuida
 
 class Ether:
 	def __init__(self,
@@ -73,3 +76,6 @@ class Ether:
 		packet += self.payload
 
 		return packet
+
+	def extract(frame: bytes):
+		pass
