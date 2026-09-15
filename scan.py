@@ -69,12 +69,12 @@ def exec_arp_ping(T_IP):
 
 	if response:
 		# extrai o header ethernet, equivalente a 14 bytes
-		ether_header = struct.unpack("!6s6sH", response[:14])
+		ether_header, remains = ether.Ether.extract(response)
 
 		# caso o pacote payload do ethernet seja do tipo ARP, extrai
 		# o header arp do pacote recebido. Equivale a 28 bytes
 		if ether_header[2] == 0x0806:
-			arp_header = struct.unpack("!HHBBH6s4s6s4s", response[14:42])
+			arp_header, remains = arp.Arp.extract(remains)
 		else:
 			return False
 
@@ -276,7 +276,8 @@ def host_scan(T_IP, port_list, wide_scan = False):
 			code = scan_function(T_IP, port)
 			if code == 0:
 				print(f'{port}\tABERTA')
-			elif len(interval) <= 30 or port in extra.notable:
+			elif port in extra.notable \
+				 or (len(interval) <= 30 and len(port_list) <= 30):
 				estado = 'FECHADA' if code==1 \
 					else 'SEM RESPOSTA/LIMITE DE TEMPO'
 				print(f'{port}\t{estado}')
