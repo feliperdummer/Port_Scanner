@@ -3,7 +3,7 @@ import sys, ipaddress, socket, errno, struct, datetime as dt
 from scapy.all import sr1, IP, ICMP, TCP, UDP
 from getmac import get_mac_address as getmac
 
-from stack import arp, ether, tcp, ip, icmp 
+from network import arp, ether, tcp, ip, icmp 
 from extra import flag_parser, errors, extra
 
 local_net_ip_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

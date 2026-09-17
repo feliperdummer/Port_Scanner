@@ -1,4 +1,4 @@
-import socket, struct, array, stack.ip
+import socket, struct, array, network.ip
 
 # via: https://datatracker.ietf.org/doc/html/rfc792
 #
