@@ -1,15 +1,16 @@
-import subprocess
+import subprocess, re
 
-class HostInfo:
+class NicInfo:
 	def __init__(self,
-		nic_name, 
-		inet_addr, inet_subnet
-		inet6_addr, mac_addr):
+		name, 
+		inet, inet_subnet,
+		inet6, mac):
 
-		self.nic_name   = nic_name
-		self.inet_addr  = inet_addr
-		self.inet6_addr = inet6_addr
-		self.mac_addr   = mac_addr
+		self.name   	 = name
+		self.inet   	 = inet
+		self.inet_subnet = inet_subnet
+		self.inet6       = inet6
+		self.mac    	 = mac
 
 
 
@@ -17,21 +18,50 @@ class HostInfo:
 def run_ifconfig():
 	out = subprocess.run('ifconfig', capture_output=True, text=True).stdout
 	nic_list = re.findall(
-		'^[a-zA-Z0-9](?=:)', 
+		'^[a-zA-Z0-9]+:(?=\\s)',  
 		out, re.MULTILINE)
 
-	inet_list = re.findall(
-		'(?<=inet\\s)(?:[0-9]{1,3}.){3}[0-9]{1,3}', 
-		out, re.MULTILINE)
+	nic_info, i, start = {}, 0, 0
+	for i in range(len(nic_list)-1):
+		curr = out[start:].split(nic_list[i+1])[0]
+		nic_info[nic_list[i][:-1]] = curr
+		start = len(curr)
+	nic_info[nic_list[-1]] = out[start:]
 
-	subnet_list = re.findall(
-		'(?<=netmask\\s)(?:[0-9]{1,3}.){3}[0-9]{1,3}', 
-		out, re.MULTILINE)
+	nics = []
 
-	inet6_list = re.findall(
-		'(?<=inet6\\s)(?:[a-fA-F0-9]{0,4}:){0,5}[a-fA-F0-9]{0,4}',
-		out, re.MULTILINE)
+	for nic, info in nic_info.items():
+		inet_addr = re.search(
+			'(?<=inet\\s)(?:[0-9]{1,3}.){3}[0-9]{1,3}', info)
+		inet_addr = inet_addr.group() if inet_addr else None
 
-	ether_list = re.findall(
-		'(?<=ether\\s)(?:[a-fA-F0-9]{0,2}:){5}[a-fA-F0-9]{0,2}',
-		out, re.MULTILINE)
+		netmask = re.search(
+			'(?<=netmask\\s)(?:[0-9]{1,3}.){3}[0-9]{1,3}', info)
+		netmask = netmask.group() if netmask else None
+
+		inet6_addr = re.search(
+			'(?<=inet6\\s)(?:[a-fA-F0-9]{0,4}:){0,5}[a-fA-F0-9]{0,4}', info)
+		inet6_addr = inet6_addr.group() if inet6_addr else None
+
+		ether = re.search(
+			'(?<=ether\\s)(?:[a-fA-F0-9]{0,2}:){5}[a-fA-F0-9]{0,2}', info)
+		ether = ether.group() if ether else None
+
+		nics.append(NicInfo(nic, inet_addr, netmask, inet6_addr, ether))
+
+	return nics
+
+# define a placa de rede usada pelo host para mandar dados ao destino
+# especificado 
+def get_nic(T_IP):
+	out = subprocess.run(['ip', 'route', 'get', str(T_IP)],
+		capture_output=True, text=True).stdout
+	nic = re.search('(?<=dev\\s)[0-9a-zA-Z]+(?=\\ssrc)', out)
+	return nic.group() if nic else None
+
+for nic in run_ifconfig():
+	print(nic.name, nic.inet, nic.inet_subnet, nic.inet6, nic.mac)
+	print('\n')
+print(get_nic('127.0.0.1'))
+print(get_nic('172.20.10.1'))
+print(get_nic('1.1.1.1'))
