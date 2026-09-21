@@ -26,9 +26,9 @@ def run_ifconfig():
 		curr = out[start:].split(nic_list[i+1])[0]
 		nic_info[nic_list[i][:-1]] = curr
 		start = len(curr)
-	nic_info[nic_list[-1]] = out[start:]
+	nic_info[nic_list[-1][:-1]] = out[start:]
 
-	nics = []
+	nics = {}
 
 	for nic, info in nic_info.items():
 		inet_addr = re.search(
@@ -47,7 +47,7 @@ def run_ifconfig():
 			'(?<=ether\\s)(?:[a-fA-F0-9]{0,2}:){5}[a-fA-F0-9]{0,2}', info)
 		ether = ether.group() if ether else None
 
-		nics.append(NicInfo(nic, inet_addr, netmask, inet6_addr, ether))
+		nics[nic] = NicInfo(nic, inet_addr, netmask, inet6_addr, ether)
 
 	return nics
 
@@ -58,10 +58,3 @@ def get_nic(T_IP):
 		capture_output=True, text=True).stdout
 	nic = re.search('(?<=dev\\s)[0-9a-zA-Z]+(?=\\ssrc)', out)
 	return nic.group() if nic else None
-
-for nic in run_ifconfig():
-	print(nic.name, nic.inet, nic.inet_subnet, nic.inet6, nic.mac)
-	print('\n')
-print(get_nic('127.0.0.1'))
-print(get_nic('172.20.10.1'))
-print(get_nic('1.1.1.1'))

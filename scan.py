@@ -3,13 +3,8 @@ import sys, ipaddress, socket, errno, struct, datetime as dt
 from scapy.all import sr1, IP, ICMP, TCP, UDP
 from getmac import get_mac_address as getmac
 
-from network import arp, ether, tcp, ip, icmp 
+from network import arp, ether, tcp, ip, icmp, host_info
 from extra import flag_parser, errors, extra
-
-local_net_ip_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-local_net_ip_socket.connect_ex(("8.8.8.8", 80))
-local_net_ip = local_net_ip_socket.getsockname()[0]
-local_net_ip_socket.close()
 
 def create_ipaddress(T_IP):
 	try:
@@ -33,22 +28,21 @@ def resolve_ip_string(ip_string):
 		conn_ip = create_ipaddress(ip_string)
 	return conn_ip
 
-def exec_arp_ping(T_IP):
-	global local_net_ip
+def exec_arp_ping(T_IP, nic):
 	arp_header = arp.Arp(
 		1, 
 		0x800,
 		6,
 		4,
 		1,
-		getmac(),
-		local_net_ip,
+		nic.mac,
+		nic.inet,
 		'00:00:00:00:00:00',
 		str(T_IP)).build()
 
 	ether_header = ether.Ether(
 		'FF:FF:FF:FF:FF:FF',
-		getmac(),
+		nic.mac,
 		0x806,
 		arp_header,
 		28).build()
@@ -57,7 +51,7 @@ def exec_arp_ping(T_IP):
 		   socket.SOCK_RAW, 
 		   socket.htons(0x806))
 	sock.settimeout(0.1)
-	sock.bind(("eth0", 0))
+	sock.bind((nic.name, 0))
 	sock.send(ether_header)
 
 	try:
@@ -87,21 +81,20 @@ def exec_arp_ping(T_IP):
 
 	return False
 
-def exec_syn_ping(T_IP, T_PORT):
+def exec_syn_ping(T_IP, T_PORT, nic):
 	code = 2
-	global local_net_ip
 
 	# SYN PACK
 	syn_pack = (
 		ip.IP(
 			6, 
 			20, 
-			local_net_ip, 
+			nic.inet, 
 			str(T_IP)
 		).build()
 		+
 		tcp.TCPPacket(
-			local_net_ip,      
+			nic.inet,      
 			8787,
 			str(T_IP),  
 			T_PORT,
@@ -149,8 +142,7 @@ def exec_syn_ping(T_IP, T_PORT):
 	return code
 
 #return 1 for success, 0 for fail
-def exec_icmp_ping(T_IP):
-	global local_net_ip
+def exec_icmp_ping(T_IP, nic):
 	code = False
 	icmp_data = 1234
 
@@ -177,7 +169,7 @@ def exec_icmp_ping(T_IP):
 
 	ip_header, remaining = ip.IP.extract(response)
 
-	if ip_header[10]!=str(T_IP) or ip_header[11]!=local_net_ip:
+	if ip_header[10]!=str(T_IP) or ip_header[11]!=nic.inet:
 		return code
 
 	icmp_header = icmp.Echo.extract(remaining)
@@ -187,50 +179,62 @@ def exec_icmp_ping(T_IP):
 
 	return True
 
+def try_arp_ping(T_IP, nic):
+	return exec_arp_ping(T_IP, nic)
 
-def try_icmp_ping(T_IP):
-	return exec_icmp_ping(T_IP) == 1
+def try_icmp_ping(T_IP, nic):
+	return exec_icmp_ping(T_IP, nic) == 1
 
-def try_tcp_ping(T_IP):
-	return exec_syn_ping(T_IP, 80) != 2
+def try_tcp_ping(T_IP, nic):
+	return exec_syn_ping(T_IP, 80, nic) != 2
 
-def try_udp_ping(T_IP):
-	return sr1(IP(dst=str(T_IP))/ 
-				UDP(dport=0),
-					timeout=0.1, verbose=False)
+def new_host_discovery(T_IP):
+	host_nics = host_info.run_ifconfig()
 
-def host_discovery(T_IP):
-	res, count = False ,0
+	nic = host_nics.get(host_info.get_nic(T_IP), None)
 
-	# arp discovery
-	if T_IP.is_private:
+	if not nic:
+		errors.error_exit(-1) 
+
+	if str(T_IP) == '127.0.0.1':
+		return nic
+
+	source_ip = socket.inet_aton(nic.inet)
+	netmask   = socket.inet_aton(nic.inet_subnet)
+	target_ip = socket.inet_aton(str(T_IP))
+
+	source_ip_network = socket.inet_ntoa(
+		(int.from_bytes(source_ip, 'big') &
+		 int.from_bytes(netmask,   'big')). \
+		 to_bytes(4, 'big'))
+
+	target_ip_network = socket.inet_ntoa(
+		(int.from_bytes(target_ip, 'big') &
+		 int.from_bytes(netmask,   'big')). \
+		 to_bytes(4, 'big'))
+
+	res, count = False, 0
+	if source_ip_network == target_ip_network:
 		while count < 3 and not res:
-			res = exec_arp_ping(T_IP)
-			count += 1			
-		return res
+			res = try_arp_ping(T_IP, nic)
+			count += 1
+		if res: return nic
 
-	# icmp ping
-	res, count = False ,0
+	res, count = False, 0
 	while count < 3 and not res:
-		res = try_icmp_ping(T_IP)
+		res = try_icmp_ping(T_IP, nic)
 		count += 1
-	if res: return res
+	if res: return nic
 
-	# tcp ping
-	count = 0
+	res, count = False, 0
 	while count < 3 and not res:
-		res = try_tcp_ping(T_IP)
+		res = try_tcp_ping(T_IP, nic)
 		count += 1
-	if res: return res
+	if res: return nic
 
-	# udp ping
-	count = 0
-	while count < 3 and not res:
-		res = try_udp_ping(T_IP)
-		count += 1
-	return res
+	return None
 
-def exec_self_scan_scapy(T_IP, port):
+def exec_self_scan_scapy(T_IP, port, nic):
 	response = sr1(
 		IP(dst='127.0.0.1') /
 		TCP(dport=port, flags='S'),
@@ -247,40 +251,42 @@ def wide_scan(T_IP, port_list):
 	print(f'Target Network: {T_IP}\n')
 
 	for host in T_IP.hosts():
-		host_scan(host, port_list, True)
+		new_host_scan(host, port_list, True)
 
-def host_scan(T_IP, port_list, wide_scan = False):
-	global local_net_ip
-
+def new_host_scan(T_IP, port_list, wide_scan = False):
 	if T_IP.version == 6:
 		errors.error_exit(2)
 
-	scan_function = exec_syn_ping
+	nic = new_host_discovery(T_IP)
 
-	# self scan
-	if local_net_ip == str(T_IP) or str(T_IP)=='127.0.0.1':
-		scan_function = exec_self_scan_scapy
-	elif not host_discovery(T_IP):
-		if not wide_scan:
-			print('===============================')
-			print(f'{T_IP} INALCANÇÁVEL')
-			print('===============================')
+	if not nic:
+		print('===============================')
+		print(f'{T_IP} INALCANÇÁVEL')
+		print('===============================')
 		return
+
+	no_response, good, bad = [], [], []
+
+	scan_function = exec_self_scan_scapy if nic.name=='lo' \
+		else exec_syn_ping
 
 	print('===============================')
 	print(f'Target IP: {T_IP}\n')
 
-	print('PORTA\tESTADO\n')
 	for interval in port_list:
 		for port in interval:
-			code = scan_function(T_IP, port)
+			code = scan_function(T_IP, port, nic)
 			if code == 0:
-				print(f'{port}\tABERTA')
-			elif port in extra.notable \
-				 or (len(interval) <= 30 and len(port_list) <= 30):
-				estado = 'FECHADA' if code==1 \
-					else 'SEM RESPOSTA/LIMITE DE TEMPO'
-				print(f'{port}\t{estado}')
+				good.append(port)
+			elif code == 1:
+				bad.append(port)
+			else:
+				no_response.append(port)
+
+	print('OPEN: ', good)
+	print('CLOSED: ', bad)
+	print('NO RESPONSE: ', no_response)
+
 	print('===============================\n')
 
 def main():
@@ -304,7 +310,7 @@ def main():
 		errors.error_exit(3)
 
 	if isinstance(conn_ip, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
-		status_code = host_scan(conn_ip, port_list)
+		status_code = new_host_scan(conn_ip, port_list)
 	else:
 		status_code = wide_scan(conn_ip, port_list)
 

@@ -22,7 +22,12 @@ formatos possiveis:
 (**) para selecionar todas as portas, utilize '[]' ou '[-]'
 (***) para portas notaveis, utilize 'notable'"""
 
+code_main = """
+erro ineseperado
+"""
+
 error_codes = {
+   -1: code_main,
 	0: code_zero,
 	1: code_one,
 	2: code_two,
