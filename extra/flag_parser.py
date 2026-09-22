@@ -3,7 +3,7 @@ from extra import extra
 class FlagParserException(Exception): 
 	pass
 
-def new_port_parse(port_list: str) -> list[Range]:
+def port_parser(port_list: str):
 	if port_list == 'all':
 		all_p = []
 		all_p.append(range(1, 65536))

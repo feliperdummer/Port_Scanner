@@ -8,15 +8,16 @@ from extra import flag_parser, errors, extra
 
 def create_ipaddress(T_IP):
 	try:
-		conn_ip = ipaddress.ip_address(T_IP)
+		conn_ip = ipaddress.IPv4Address(T_IP)
 	except ValueError:
 		conn_ip = None
 	return conn_ip
 
 def create_ipnetwork(T_IP):
 	try:
-		ip_net = ipaddress.ip_network(T_IP)
+		ip_net = ipaddress.IPv4Network(T_IP)
 	except ValueError:
+		print(T_IP, 'here')
 		ip_net = None
 	return ip_net
 
@@ -50,7 +51,7 @@ def exec_arp_ping(T_IP, nic):
 	sock = socket.socket(socket.AF_PACKET, 
 		   socket.SOCK_RAW, 
 		   socket.htons(0x806))
-	sock.settimeout(0.1)
+	sock.settimeout(0.01)
 	sock.bind((nic.name, 0))
 	sock.send(ether_header)
 
@@ -188,7 +189,7 @@ def try_icmp_ping(T_IP, nic):
 def try_tcp_ping(T_IP, nic):
 	return exec_syn_ping(T_IP, 80, nic) != 2
 
-def new_host_discovery(T_IP):
+def host_discovery(T_IP):
 	host_nics = host_info.run_ifconfig()
 
 	nic = host_nics.get(host_info.get_nic(T_IP), None)
@@ -247,25 +248,60 @@ def exec_self_scan_scapy(T_IP, port, nic):
 	elif response[TCP].flags=='R' or response[TCP].flags=='RA':
 		return 1
 
-def wide_scan(T_IP, port_list):
-	print(f'Target Network: {T_IP}\n')
+def wide_scan(T_NETWORK, port_list):
+	if isinstance(T_NETWORK, ipaddress.IPv6Address):
+		errors.error_exit(2)
 
-	for host in T_IP.hosts():
-		new_host_scan(host, port_list, True)
+	print(f'Target Network: {T_NETWORK}\n')
 
-def new_host_scan(T_IP, port_list, wide_scan = False):
+	up, down = [], []
+
+	for host in T_NETWORK.hosts():
+		nic = host_discovery(host)
+		if not nic: 
+			down.append(host)
+			continue
+		scan_function = exec_self_scan_scapy \
+			if nic.name=='lo' else exec_syn_ping
+		up.append(host)
+
+		good, bad, unreach = [], [], []
+
+		for port_range in port_list:
+			for port in port_range:
+				code = scan_function(host, port, nic)
+				if code == 0:
+					good.append(port)
+				elif code == 1:
+					bad.append(port)
+				else:
+					unreach.append(port)
+
+		print('===============================')
+		print(f'Target IP: {host}\n')
+		print('OPEN: ', good)
+		print('CLOSED: ', bad)
+		print('NO RESPONSE: ', unreach)
+		print('===============================\n')
+
+	print('----------RESULT----------')
+	print(f'HOSTS UP: {len(up)} out of {len(up)+len(down)}')
+
+	return 1
+
+def host_scan(T_IP, port_list):
 	if T_IP.version == 6:
 		errors.error_exit(2)
 
-	nic = new_host_discovery(T_IP)
+	nic = host_discovery(T_IP)
 
 	if not nic:
 		print('===============================')
 		print(f'{T_IP} INALCANÇÁVEL')
 		print('===============================')
-		return
+		return 1
 
-	no_response, good, bad = [], [], []
+	unreach, good, bad = [], [], []
 
 	scan_function = exec_self_scan_scapy if nic.name=='lo' \
 		else exec_syn_ping
@@ -281,13 +317,15 @@ def new_host_scan(T_IP, port_list, wide_scan = False):
 			elif code == 1:
 				bad.append(port)
 			else:
-				no_response.append(port)
+				unreach.append(port)
 
 	print('OPEN: ', good)
 	print('CLOSED: ', bad)
-	print('NO RESPONSE: ', no_response)
+	print('NO RESPONSE: ', unreach)
 
 	print('===============================\n')
+
+	return 0
 
 def main():
 	arg_len = len(sys.argv)
@@ -302,7 +340,7 @@ def main():
 		errors.error_exit(1)
 
 	try:
-		port_list = flag_parser.new_port_parse(port_list_string)
+		port_list = flag_parser.port_parser(port_list_string)
 	except flag_parser.FlagParserException:
 		errors.error_exit(4)
 
@@ -310,7 +348,7 @@ def main():
 		errors.error_exit(3)
 
 	if isinstance(conn_ip, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
-		status_code = new_host_scan(conn_ip, port_list)
+		status_code = host_scan(conn_ip, port_list)
 	else:
 		status_code = wide_scan(conn_ip, port_list)
 
