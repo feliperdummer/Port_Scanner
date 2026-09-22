@@ -196,7 +196,7 @@ def new_host_discovery(T_IP):
 	if not nic:
 		errors.error_exit(-1) 
 
-	if str(T_IP) == '127.0.0.1':
+	if nic.name=='lo':
 		return nic
 
 	source_ip = socket.inet_aton(nic.inet)
