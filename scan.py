@@ -1,7 +1,6 @@
 import sys, ipaddress, socket, errno, struct, datetime as dt
 
-from scapy.all import sr1, IP, ICMP, TCP, UDP
-from getmac import get_mac_address as getmac
+from scapy.all import sr1, IP, TCP
 
 from network import arp, ether, tcp, ip, icmp, host_info
 from extra import flag_parser, errors, extra
@@ -17,11 +16,10 @@ def create_ipnetwork(T_IP):
 	try:
 		ip_net = ipaddress.IPv4Network(T_IP)
 	except ValueError:
-		print(T_IP, 'here')
 		ip_net = None
 	return ip_net
 
-def resolve_ip_string(ip_string):
+def resolve_input_ip(ip_string):
 	conn_ip = None
 	if '/' in ip_string:
 		conn_ip = create_ipnetwork(ip_string)
@@ -71,16 +69,16 @@ def exec_arp_ping(T_IP, nic):
 		if ether_header[2] == 0x0806:
 			arp_header, remains = arp.Arp.extract(remains)
 		else:
-			return False
+			return 0
 
 		# arp_header[7] e o mac da maquina que espera o arp response, 
 		# ou seja, minha maquina
-		if bytes.fromhex(getmac().replace(':', '')) != arp_header[7]:
-			return False
+		if bytes.fromhex(nic.mac.replace(':', '')) != arp_header[7]:
+			return 0
 		
-		return True
+		return 1
 
-	return False
+	return 0
 
 def exec_syn_ping(T_IP, T_PORT, nic):
 	code = 2
@@ -121,13 +119,13 @@ def exec_syn_ping(T_IP, T_PORT, nic):
 		receiver.settimeout(0.1)
 		response, responseSender = receiver.recvfrom(65535)
 	except TimeoutError:
-		return code
+		return 2
 	finally:
 		receiver.close()
 		sender.close()
 
 	if responseSender[0] != str(T_IP):
-		return code
+		return 2
 
 	ip_header_extracted, upper_layer_bytes = ip.IP.extract(response)
 	
@@ -136,15 +134,13 @@ def exec_syn_ping(T_IP, T_PORT, nic):
 
 	flags = tcp.TCPPacket.extract_flags_only(tcp_header_ext[6])
 	if flags[1] and flags[4]: # SYN-ACK -> ABERTA
-		code = 0
+		return 0
 	elif flags[2] and flags[4]: # RST-ACK -> FECHADA
-		code = 1
+		return 1
 
-	return code
+	return 2
 
-#return 1 for success, 0 for fail
 def exec_icmp_ping(T_IP, nic):
-	code = False
 	icmp_data = 1234
 
 	icmp_echo = icmp.Echo(8, icmp_data).build()
@@ -163,7 +159,7 @@ def exec_icmp_ping(T_IP, nic):
 		recv.settimeout(0.1)
 		response, sender = recv.recvfrom(65535)
 	except TimeoutError:
-		return code
+		return 0
 	finally:
 		send.close()
 		recv.close()
@@ -171,17 +167,17 @@ def exec_icmp_ping(T_IP, nic):
 	ip_header, remaining = ip.IP.extract(response)
 
 	if ip_header[10]!=str(T_IP) or ip_header[11]!=nic.inet:
-		return code
+		return 0
 
 	icmp_header = icmp.Echo.extract(remaining)
 
 	if icmp_header[0]!=0 or icmp_header[5]!=icmp_data:
-		return code
+		return 0
 
-	return True
+	return 1
 
 def try_arp_ping(T_IP, nic):
-	return exec_arp_ping(T_IP, nic)
+	return exec_arp_ping(T_IP, nic) == 1
 
 def try_icmp_ping(T_IP, nic):
 	return exec_icmp_ping(T_IP, nic) == 1
@@ -237,7 +233,7 @@ def host_discovery(T_IP):
 
 def exec_self_scan_scapy(T_IP, port, nic):
 	response = sr1(
-		IP(dst='127.0.0.1') /
+		IP(dst=nic.inet) /
 		TCP(dport=port, flags='S'),
 		timeout=0.1, verbose=False
 	)
@@ -284,7 +280,7 @@ def wide_scan(T_NETWORK, port_list):
 		print('NO RESPONSE: ', unreach)
 		print('===============================\n')
 
-	print('----------RESULT----------')
+	print('------------RESULT-------------')
 	print(f'HOSTS UP: {len(up)} out of {len(up)+len(down)}')
 
 	return 1
@@ -328,6 +324,7 @@ def host_scan(T_IP, port_list):
 	return 0
 
 def main():
+	print(f'Scan iniciado em [{dt.datetime.now().strftime("%X %x")}]\n')
 	arg_len = len(sys.argv)
 	if arg_len != 3:
 		errors.error_exit(0)
@@ -335,7 +332,7 @@ def main():
 	ip_string = sys.argv[1]
 	port_list_string = sys.argv[2]
 
-	conn_ip = resolve_ip_string(ip_string)
+	conn_ip = resolve_input_ip(ip_string)
 	if not conn_ip:
 		errors.error_exit(1)
 
@@ -352,7 +349,7 @@ def main():
 	else:
 		status_code = wide_scan(conn_ip, port_list)
 
-	print(f'Scan finalizado em [{dt.datetime.now().strftime("%X %x")}]')
+	print(f'\nScan finalizado em [{dt.datetime.now().strftime("%X %x")}]')
 
 if __name__ == "__main__":
 	main()
